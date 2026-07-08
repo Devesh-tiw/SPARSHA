@@ -12,7 +12,6 @@ os.makedirs('static/audio', exist_ok=True)
 
 def get_ayurvedic_advice(user_input, lang_pref):
     search_query = user_input.lower().replace(",", "").replace("?", "").replace("।", "")
-    
     # 1. Ignore common English words so they don't break the search
     stopwords = ["i", "have", "a", "am", "the", "my", "is", "and", "of", "lot", "pain", "in", "for", "only"]
     words_in_query = [w for w in search_query.split() if w not in stopwords]
