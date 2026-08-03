@@ -1,105 +1,89 @@
-from fastapi import FastAPI, Request
-from fastapi.responses import HTMLResponse, JSONResponse
-from fastapi.templating import Jinja2Templates
-from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel
 import os
-import time
-
-# --- AI & RAG IMPORTS ---
-from dotenv import load_dotenv
-import google.generativeai as genai
 import chromadb
-from chromadb.utils import embedding_functions
+from dotenv import load_dotenv
+from openai import OpenAI
+from chromadb.utils.embedding_functions import SentenceTransformerEmbeddingFunction
 
-# 1. Load Environment Variables (Your hidden API Key)
 load_dotenv()
-GOOGLE_API_KEY = os.getenv("GEMINI_API_KEY")
+LLAMA_API_KEY = os.getenv("LLAMA_API_KEY")
 
-if not GOOGLE_API_KEY:
-    print("CRITICAL ERROR: GEMINI_API_KEY not found in .env file!")
+if not LLAMA_API_KEY:
+    print("CRITICAL ERROR: LLAMA_API_KEY not found in .env file!")
     exit()
 
-# 2. Configure Gemini
-genai.configure(api_key=GOOGLE_API_KEY)
-model = genai.GenerativeModel('gemini-2.5-flash')
-
-# 3. Connect to your Local ChromaDB (The Memory)
-# We use get_or_create_collection so it never crashes even if the folder shifts!
-chroma_client = chromadb.PersistentClient(path="./ayurveda_vector_db")
-sentence_transformer_ef = embedding_functions.SentenceTransformerEmbeddingFunction(model_name="all-MiniLM-L6-v2")
-collection = chroma_client.get_or_create_collection(
-    name="ayurveda_herbs_en",
-    embedding_function=sentence_transformer_ef
+# OpenRouter Client Setup
+client = OpenAI(
+    api_key=LLAMA_API_KEY,
+    base_url="https://openrouter.ai/api/v1",  # OpenRouter endpoint
 )
 
-# 4. Initialize the blazing fast API
-app = FastAPI()
+# Connect to ChromaDB
+chroma_client = chromadb.PersistentClient(path="./ayurveda_vector_db")
+sentence_transformer_ef = SentenceTransformerEmbeddingFunction(
+    model_name="all-MiniLM-L6-v2"
+)
 
-# Setup folders for HTML and Audio
-templates = Jinja2Templates(directory="templates")
-os.makedirs('static/audio', exist_ok=True)
-app.mount("/static", StaticFiles(directory="static"), name="static")
+collection = chroma_client.get_or_create_collection(
+    name="bhavprakash_collection", embedding_function=sentence_transformer_ef
+)
 
-# Data model for incoming requests
-class ChatRequest(BaseModel):
-    message: str
-    language: str = "en"
 
-# --- ROUTES ---
+def ask_ayurveda_ai(user_symptom: str, language: str = "en"):
+    # Step A: Query ChromaDB
+    results = collection.query(query_texts=[user_symptom], n_results=2)
 
-@app.get("/", response_class=HTMLResponse)
-async def home(request: Request):
-    return templates.TemplateResponse(request=request, name="index.html")
+    retrieved_context = "\n\n".join(results["documents"][0])
 
-@app.post("/ask")
-async def ask_ai(chat_request: ChatRequest):
-    user_message = chat_request.message
-    user_lang = chat_request.language
+    if not retrieved_context.strip():
+        return "Sorry, no relevant information was found in the database."
+
+    # Step B: Strict System Prompt
+    system_prompt = f"""
+    You are an expert Ayurvedic Doctor strictly relying on the Bhavaprakasha Nighantu.
+    A patient states their symptom: "{user_symptom}".
     
+    Based ONLY on the following retrieved classical database records:
+    ---
+    {retrieved_context}
+    ---
+    
+    Recommend the appropriate herbs. You MUST format your response exactly like this for each herb:
+
+    **Sanskrit Name:** [Herb Hindi/Sanskrit Name]
+    **English/Botanical Name:** [English and Botanical name]
+    **Category (Varga):** [Varga Name]
+    
+    **Classical Properties:**
+    * **Rasa (Taste):** [Extract from text]
+    * **Guna (Qualities):** [Extract from text]
+    * **Virya (Potency):** [Extract from text]
+    * **Vipaka (Post-digestive):** [Extract from text]
+    
+    **Clinical Action (Karma):**
+    [List the raw Sanskrit karma and its translation]
+    """
+
+    # Step C: Call OpenRouter Model
     try:
-        # STEP A: RETRIEVAL (Search the Vector Database)
-        results = collection.query(
-            query_texts=[user_message],
-            n_results=3
+        response = client.chat.completions.create(
+            model="meta-llama/llama-3.3-70b-instruct",  # OpenRouter model ID
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {
+                    "role": "user",
+                    "content": f"I need a remedy for: {user_symptom}",
+                },
+            ],
+            temperature=0.1,
         )
-        
-        # Combine the retrieved data into a single string
-        retrieved_context = ""
-        if results and results['documents'] and len(results['documents']) > 0:
-            retrieved_context = "\n".join(results['documents'][0])
-        
-        # STEP B: PROMPT ENGINEERING
-        system_prompt = f"""
-        You are an empathetic, expert Ayurvedic practitioner. A patient has come to you and said: "{user_message}".
-        
-        Based ONLY on the following data retrieved from the Bhavaprakash Nighantu database:
-        ---
-        {retrieved_context}
-        ---
-        
-        Provide a concise, clear, and empathetic response to the patient. Do not make up any information. If the data does not provide an answer, politely inform the patient that you cannot provide advice based on the available information.
-        """
-        
-        # Enforce Language
-        if user_lang == "hi":
-            system_prompt += "\n\nCRITICAL: You MUST write your entire response in Hindi (हिंदी)."
-        else:
-            system_prompt += "\n\nCRITICAL: You MUST write your entire response in English."
+        return response.choices[0].message.content
 
-        # STEP C: GENERATION (Ask Gemini)
-        response = model.generate_content(system_prompt)
-        answer_text = response.text
-        
     except Exception as e:
-        print(f"Error during RAG pipeline: {e}")
-        if user_lang == "hi":
-            answer_text = "क्षमा करें, मैं अभी डेटाबेस से कनेक्ट नहीं हो पा रहा हूँ।"
-        else:
-            answer_text = "Sorry, I am having trouble connecting to my database right now."
+        return f"Error connecting to OpenRouter API: {e}"
 
-    # STEP D: RETURN TO FRONTEND
-    return JSONResponse(content={
-        "answer": answer_text,
-        "audio_url": ""
-    })
+
+if __name__ == "__main__":
+    user_input = "I have a severe cough and chest congestion."
+    print("User:", user_input)
+    print("\n--- AI RESPONSE ---")
+    print(ask_ayurveda_ai(user_input, language="en"))
