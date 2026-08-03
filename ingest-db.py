@@ -48,24 +48,27 @@ def ingest_data():
         synonyms = str(row.get('synonyms', '')).strip()
         props = str(row.get('classical_properties', '')).strip()
         karma = str(row.get('raw_karma_sanskrit', '')).strip()
+        english_symp = str(row.get('english_symptoms', '')).strip() # <--- NEW LINE
         herb_en = str(row.get('herb_english', '')).strip()
         botanical = str(row.get('botanical_name', '')).strip()
         
-        # Skip empty strings outputted by pandas as 'nan'
+        # Skip empty strings
         herb_hi = "" if herb_hi == "nan" else herb_hi
         synonyms = "" if synonyms == "nan" else synonyms
         props = "" if props == "nan" else props
         karma = "" if karma == "nan" else karma
+        english_symp = "" if english_symp == "nan" else english_symp # <--- NEW LINE
         herb_en = "" if herb_en == "nan" else herb_en
         botanical = "" if botanical == "nan" else botanical
 
-        # Create rich context document for vector similarity search
+        # THE FIX: Now ChromaDB will actually index the English translated symptoms!
         text_content = (
             f"Herb Sanskrit/Hindi: {herb_hi} | "
             f"Varga Category: {varga} | "
             f"Synonyms: {synonyms} | "
             f"Classical Properties: {props} | "
-            f"Karma/Indications: {karma} | "
+            f"Karma/Indications (Sanskrit): {karma} | "
+            f"Symptoms/Uses (English): {english_symp} | "
             f"English Name: {herb_en} | "
             f"Botanical Name: {botanical}"
         )

@@ -182,34 +182,56 @@
         askBtn.addEventListener('click', sendMessage);
 
         // 2. SPEECH-TO-TEXT LOGIC
-        const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-        if (SpeechRecognition) {
-            const recognition = new SpeechRecognition();
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
 
-            micBtn.addEventListener('click', () => {
+    if (SpeechRecognition) {
+        const recognition = new SpeechRecognition();
+        recognition.continuous = false;
+        recognition.interimResults = false;
+
+        micBtn.addEventListener('click', () => {
+            try {
                 // Check if Hindi is selected to understand Hindi voice!
                 const isHindi = document.getElementById('lang-hi').checked;
                 recognition.lang = isHindi ? 'hi-IN' : 'en-US';
 
                 recognition.start();
                 micBtn.innerText = "🔴"; // Turn red while listening
-            });
+            } catch (error) {
+                console.error("Microphone start error:", error);
+            }
+        });
 
-            recognition.onresult = (event) => {
-                const transcript = event.results[0][0].transcript;
-                userInput.value = transcript; // Put words in the box
-                micBtn.innerText = "🎙️"; // Reset mic icon
+        recognition.onresult = (event) => {
+            const transcript = event.results[0][0].transcript;
+            userInput.value = transcript; // Put words in the box
+            micBtn.innerText = "🎙️"; // Reset mic icon
 
-                // Automatically send the message after talking!
+            // Automatically send the message after talking!
+            if (typeof sendMessage === "function") {
                 sendMessage();
-            };
+            }
+        };
 
-            recognition.onerror = () => {
-                micBtn.innerText = "🎙️"; // Reset if there's an error
-            };
-        } else {
-            micBtn.style.display = "none"; // Hide mic if browser doesn't support it
-        }
+        // Robust error handling to catch permission issues
+        recognition.onerror = (event) => {
+            console.error("Speech recognition error detected:", event.error);
+            micBtn.innerText = "🎙️"; // Reset if there's an error
+
+            if (event.error === 'not-allowed') {
+                alert("Microphone access was denied. Please allow it in the browser settings and ensure you are accessing via http://127.0.0.1:5000.");
+            }
+        };
+
+        // Failsafe: Reset the mic icon if the browser stops listening silently
+        recognition.onend = () => {
+            micBtn.innerText = "🎙️";
+        };
+
+    } else {
+        micBtn.style.display = "none"; // Hide mic if browser doesn't support it
+        console.error("Speech Recognition API is not supported in this browser.");
+    }
 
             async function sendMessage() {
                 const text = userInput.value.trim();
@@ -287,6 +309,7 @@
 
                     chatContainer.appendChild(botBubble);
                 });
+                
     </script>
 </body>
 

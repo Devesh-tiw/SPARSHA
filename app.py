@@ -11,7 +11,7 @@ from chromadb.utils.embedding_functions import SentenceTransformerEmbeddingFunct
 app = Flask(__name__)
 
 
-
+os.makedirs('static/audio', exist_ok=True)
 
 
 load_dotenv()
@@ -29,18 +29,33 @@ collection = chroma_client.get_or_create_collection(
     name="bhavprakash_collection", embedding_function=sentence_transformer_ef
 )
 
-
 def ask_ayurveda_ai(user_symptom: str, language: str):
-    # Step A: Query Vector Database based on user symptom
-    results = collection.query(query_texts=[user_symptom], n_results=2)
+    
+    # 1. THE MEDICAL ROUTER: Force ChromaDB to look for exact Ayurvedic terms
+    search_query = user_symptom.lower()
+    
+    if "fever" in search_query or "bukhar" in search_query:
+        search_query = "fever jwara guduchi kiratatikta parpata triphala"
+    elif "cough" in search_query or "cold" in search_query:
+        search_query = "cough kasa shwasa pippali kantakari haritaki"
+    elif "digestion" in search_query or "stomach" in search_query:
+        search_query = "digestion agni amapachana shunthi chitraka"
+
+    # 2. Fetch 5 results to ensure we bypass the "Ghee" junk
+    results = collection.query(query_texts=[search_query], n_results=5)
     retrieved_context = "\n\n".join(results["documents"][0])
+
+    # 3. 🚨 DEBUGGING: This will print ChromaDB's exact findings in your VS Code terminal!
+    print("\n\n=== CHROMA DB RETRIEVED THESE ROWS ===")
+    print(retrieved_context)
+    print("======================================\n\n")
 
     if not retrieved_context.strip():
         if language == "hi":
             return "मुझे इस समस्या के लिए डेटाबेस में कोई सटीक औषधि नहीं मिली।"
         return "Sorry, no relevant information was found in the database."
 
-    # Step B: Instruct the LLM
+    
     system_prompt = f"""
     You are an expert Ayurvedic Doctor strictly relying on the Bhavaprakasha Nighantu.
     A patient states their symptom: "{user_symptom}".
@@ -50,17 +65,20 @@ def ask_ayurveda_ai(user_symptom: str, language: str):
     {retrieved_context}
     ---
     
+    CLINICAL RULES:
+    1. IGNORE JUNK: Ignore chapter headings (like "अथ गव्यघृतस्य"), words like 'Madhyam', or blank rows.
+    2. THE FEVER RULE: If the symptom is fever, do NOT recommend Ghee (Ghrita). Look for valid herbs in the context.
+    3. MISSING DATA: If the English or Botanical name is missing in the retrieved text, simply omit them. Do not print empty slashes.
+    
     Recommend the best matching herb. Keep it brief so it can be spoken aloud. 
-    Format your response like this:
-    **Sanskrit Name:** [Name]
+    Format your response EXACTLY like this:
+    **Herb Name:** [Sanskrit Name] (Include / English / Botanical ONLY if found in the text)
     **Properties:** [Rasa, Guna, Virya, Vipaka]
     **Uses:** [Brief translation of Karma]
     """
 
-
     if language == "hi":
         system_prompt += "\n\nCRITICAL: You MUST write your entire response in Hindi."
-
 
     try:
         response = client.chat.completions.create(
@@ -74,7 +92,6 @@ def ask_ayurveda_ai(user_symptom: str, language: str):
         return response.choices[0].message.content
     except Exception as e:
         return f"API Error: {e}"
-
 def clean_text_for_speech(text):
     # Removes markdown asterisks (**) so the TTS doesn't say "asterisk asterisk" aloud
     return re.sub(r'\*+', '', text)
