@@ -1,88 +1,84 @@
 from flask import Flask, render_template, request, jsonify
 from gtts import gTTS
-import csv
 import os
 import time
+import re
+from dotenv import load_dotenv
+from openai import OpenAI
+import chromadb
+from chromadb.utils.embedding_functions import SentenceTransformerEmbeddingFunction
 
 app = Flask(__name__)
 
 
-# Ensure the audio folder exists
-os.makedirs('static/audio', exist_ok=True)
 
-def get_ayurvedic_advice(user_input, lang_pref):
-    search_query = user_input.lower().replace(",", "").replace("?", "").replace("।", "")
-    # 1. Ignore common English words so they don't break the search
-    stopwords = ["i", "have", "a", "am", "the", "my", "is", "and", "of", "lot", "pain", "in", "for", "only"]
-    words_in_query = [w for w in search_query.split() if w not in stopwords]
+
+
+load_dotenv()
+client = OpenAI(
+    api_key=os.getenv("LLAMA_API_KEY"),
+    base_url="https://openrouter.ai/api/v1",
+)
+
+# Connect to ChromaDB
+chroma_client = chromadb.PersistentClient(path="./ayurveda_vector_db")
+sentence_transformer_ef = SentenceTransformerEmbeddingFunction(
+    model_name="all-MiniLM-L6-v2"
+)
+collection = chroma_client.get_or_create_collection(
+    name="bhavprakash_collection", embedding_function=sentence_transformer_ef
+)
+
+
+def ask_ayurveda_ai(user_symptom: str, language: str):
+    # Step A: Query Vector Database based on user symptom
+    results = collection.query(query_texts=[user_symptom], n_results=2)
+    retrieved_context = "\n\n".join(results["documents"][0])
+
+    if not retrieved_context.strip():
+        if language == "hi":
+            return "मुझे इस समस्या के लिए डेटाबेस में कोई सटीक औषधि नहीं मिली।"
+        return "Sorry, no relevant information was found in the database."
+
+    # Step B: Instruct the LLM
+    system_prompt = f"""
+    You are an expert Ayurvedic Doctor strictly relying on the Bhavaprakasha Nighantu.
+    A patient states their symptom: "{user_symptom}".
     
-    # 2. Choose Database and Translation
-    if lang_pref == 'hi':
-        symptom_dictionary = {
-            "cough": "कफ", "cold": "जुकाम", "diarrhea": "अतीसार",
-            "fever": "ज्वर", "digestion": "अग्निमान्द्य", "diabetes": "प्रमेह",
-            "pitta": "पित्त", "vata": "वात", "kapha": "कफ",
-            "mango": "आम्र", "headache": "शिरःशूल", "blood": "रक्तपित्त",
-            "bukhar": "ज्वर"
-        }
-        
-        search_words = [symptom_dictionary.get(word, word) for word in words_in_query]
-        db_file = 'total_ayurveda_database.csv'
-    else:
-        search_words = words_in_query
-        db_file = 'english_ayurveda_database.csv'
-            
+    Based ONLY on the following retrieved classical database records:
+    ---
+    {retrieved_context}
+    ---
+    
+    Recommend the best matching herb. Keep it brief so it can be spoken aloud. 
+    Format your response like this:
+    **Sanskrit Name:** [Name]
+    **Properties:** [Rasa, Guna, Virya, Vipaka]
+    **Uses:** [Brief translation of Karma]
+    """
+
+
+    if language == "hi":
+        system_prompt += "\n\nCRITICAL: You MUST write your entire response in Hindi."
+
+
     try:
-        best_match_herb = ""
-        best_match_karma = ""
-        highest_score = 0
-        
-        with open(db_file, mode='r', encoding='utf-8', errors='replace') as file:
-            reader = csv.DictReader(file)
-            current_herb = "Unknown Herb"
-            
-            for row in reader:
-                karma = ""
-                for key, value in row.items():
-                    val_str = str(value).strip()
-                    # FORCE the AI to only remember herbs that actually have a real name typed in the box!
-                    if key and 'Head' in key and val_str and val_str != "":
-                        current_herb = val_str
-                    if key and 'Karma' in key:
-                        karma = str(value).strip()
-                
-                row_text = " ".join([str(val).lower() for val in row.values() if val])
-                
-                # 3. The Advanced Scoring System
-                score = 0
-                for word in search_words:
-                    if word and word.lower() in row_text:
-                        score += 1
-                        # BIG BONUS: If the symptom is specifically in the Karma (properties), give it 2 extra points!
-                        if karma and word.lower() in karma.lower():
-                            score += 2
-                        
-                # 4. Only update the winner if it has a HIGHER score AND a valid name!
-                if score > highest_score and current_herb != "Unknown Herb" and current_herb != "":
-                    highest_score = score
-                    best_match_herb = current_herb
-                    best_match_karma = karma
-                    
-        # 5. Return the Ultimate Winner
-        if highest_score > 0:
-            if lang_pref == 'en':
-                return f"According to the database, the best herb is {best_match_herb}. Its properties are: {best_match_karma}.", 'en'
-            else:
-                return f"डेटाबेस के अनुसार, सबसे अच्छी औषधि '{best_match_herb}' है। इसके गुण हैं: {best_match_karma}।", 'hi'
-        else:
-            if lang_pref == 'en':
-                return "I could not find a specific medicine for that in the database.", 'en'
-            else:
-                return "मुझे इस समस्या के लिए डेटाबेस में कोई सटीक औषधि नहीं मिली।", 'hi'
-                
-    except FileNotFoundError:
-        return f"Error: The {db_file} file is missing.", lang_pref
-# --- WEB ROUTES ---
+        response = client.chat.completions.create(
+            model="meta-llama/llama-3.3-70b-instruct",
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": f"I need a remedy for: {user_symptom}"},
+            ],
+            temperature=0.1,
+        )
+        return response.choices[0].message.content
+    except Exception as e:
+        return f"API Error: {e}"
+
+def clean_text_for_speech(text):
+    # Removes markdown asterisks (**) so the TTS doesn't say "asterisk asterisk" aloud
+    return re.sub(r'\*+', '', text)
+
 
 @app.route('/')
 def home():
@@ -91,23 +87,26 @@ def home():
 @app.route('/ask', methods=['POST'])
 def ask_ai():
     user_message = request.json.get("message")
-    user_lang = request.json.get("language", "en") # Get the language from the website
+    user_lang = request.json.get("language", "en") # 'en' or 'hi'
     
-    # 1. Get Answer
-    answer_text, lang_code = get_ayurvedic_advice(user_message, user_lang)
     
-    # 2. Generate Audio 
+    answer_text = ask_ayurveda_ai(user_message, user_lang)
+    
+     
+    clean_audio_text = clean_text_for_speech(answer_text)
     audio_filename = f"response_{int(time.time())}.mp3"
     audio_path = os.path.join('static', 'audio', audio_filename)
     
-    if lang_code == 'en':
-        tts = gTTS(text=answer_text, lang='en', tld='co.in')
-    else:
-        tts = gTTS(text=answer_text, lang='hi')
-        
-    tts.save(audio_path)
+    try:
+        if user_lang == 'en':
+            tts = gTTS(text=clean_audio_text, lang='en', tld='co.in')
+        else:
+            tts = gTTS(text=clean_audio_text, lang='hi')
+        tts.save(audio_path)
+    except Exception as e:
+        print("Audio generation failed:", e)
     
-    # 3. Send back to website
+    
     return jsonify({
         "answer": answer_text,
         "audio_url": f"/{audio_path}"

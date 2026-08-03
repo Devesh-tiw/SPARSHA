@@ -263,6 +263,30 @@
             chatBox.appendChild(msgDiv);
             chatBox.scrollTop = chatBox.scrollHeight;
         }
+        // Function to convert simple Markdown (**bold**, \n newlines) to HTML
+            function formatMarkdown(text) {
+                return text
+                    .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>') // Converts **text** to <strong>text</strong>
+                    .replace(/\n/g, '<br>');                        // Converts line breaks to <br>
+            }
+
+            // In your fetch('/ask') response block:
+            fetch('/ask', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ message: userInput, language: currentLang })
+            })
+                .then(res => res.json())
+                .then(data => {
+                    // 1. Create response bubble
+                    let botBubble = document.createElement('div');
+                    botBubble.className = 'bot-message';
+
+                    // 2. Use innerHTML with formatMarkdown instead of innerText
+                    botBubble.innerHTML = formatMarkdown(data.answer);
+
+                    chatContainer.appendChild(botBubble);
+                });
     </script>
 </body>
 
