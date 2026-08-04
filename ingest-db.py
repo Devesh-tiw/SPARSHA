@@ -2,7 +2,23 @@ import os
 import pandas as pd
 import chromadb
 from chromadb.utils.embedding_functions import SentenceTransformerEmbeddingFunction
+PERSIST_PATH = "./chroma_ayurveda_db"   # change this if your DB lives elsewhere
 
+client = chromadb.PersistentClient(path=PERSIST_PATH)
+collections = client.list_collections()
+
+if not collections:
+    print(f"No collections found at {PERSIST_PATH}. Wrong path, or DB was never persisted here.")
+else:
+    for c in collections:
+        col = client.get_collection(c.name)
+        print(f"Collection: {c.name}")
+        print(f"  Document count: {col.count()}")
+        print(f"  Metadata: {c.metadata}")
+        if col.count() > 0:
+            sample = col.peek(1)
+            print(f"  Sample doc: {sample['documents'][0][:200]}")
+            print(f"  Sample metadata: {sample['metadatas'][0]}")
 # Set this to your exact master CSV filename
 CSV_FILE_PATH = "Master_Ayurveda_Database_Fixed.csv"
 DB_PATH = "./ayurveda_vector_db"

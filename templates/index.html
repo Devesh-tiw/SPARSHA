@@ -5,43 +5,137 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Ayurvedic Voice AI</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link
+        href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,500;0,9..144,600;1,9..144,500&family=Work+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@500&display=swap"
+        rel="stylesheet">
     <style>
+        :root {
+            --ink: #1F3D2B;
+            --ink-soft: #3C5A44;
+            --parchment: #EFE9D6;
+            --parchment-light: #F8F5E9;
+            --card: #FFFDF7;
+            --leaf: #6B8F5A;
+            --leaf-dark: #4B6B3C;
+            --turmeric: #C68E17;
+            --turmeric-light: #E8C468;
+            --danger: #A8402F;
+            --danger-bg: #F7E9E4;
+            --rule: rgba(31, 61, 43, 0.16);
+        }
+
+        * {
+            box-sizing: border-box;
+        }
+
+        @media (prefers-reduced-motion: reduce) {
+
+            *,
+            *::before,
+            *::after {
+                animation-duration: 0.01ms !important;
+                animation-iteration-count: 1 !important;
+                transition-duration: 0.01ms !important;
+            }
+        }
+
         body {
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            background-color: #F4F9F4;
+            font-family: 'Work Sans', sans-serif;
+            background:
+                radial-gradient(circle at 15% 10%, rgba(107, 143, 90, 0.08), transparent 40%),
+                radial-gradient(circle at 85% 90%, rgba(198, 142, 23, 0.07), transparent 45%),
+                var(--parchment);
             margin: 0;
-            padding: 20px;
+            padding: 32px 16px;
             display: flex;
             justify-content: center;
+            color: var(--ink);
+            min-height: 100vh;
         }
 
         .chat-container {
-            background-color: white;
+            background-color: var(--card);
             width: 100%;
-            max-width: 600px;
-            border-radius: 15px;
-            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
-            padding: 20px;
+            max-width: 620px;
+            border-radius: 4px;
+            border: 1px solid var(--rule);
+            box-shadow: 0 20px 50px rgba(31, 61, 43, 0.12);
+            padding: 0;
             display: flex;
             flex-direction: column;
-            height: 80vh;
+            height: 84vh;
+            overflow: hidden;
+            animation: riseIn 0.5s ease-out;
+        }
+
+        @keyframes riseIn {
+            from {
+                opacity: 0;
+                transform: translateY(10px);
+            }
+
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
         }
 
         .header-area {
             display: flex;
             justify-content: space-between;
             align-items: center;
-            margin-bottom: 15px;
+            padding: 20px 24px;
+            border-bottom: 1px solid var(--rule);
+            position: relative;
+        }
+
+        .header-area::after {
+            content: "";
+            position: absolute;
+            bottom: -5px;
+            left: 24px;
+            right: 24px;
+            height: 1px;
+            background: var(--rule);
+        }
+
+        .brand {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .leaf-mark {
+            width: 28px;
+            height: 28px;
+            flex-shrink: 0;
         }
 
         h2 {
-            color: #2C5F2D;
+            font-family: 'Fraunces', serif;
+            font-weight: 500;
+            font-size: 21px;
+            color: var(--ink);
             margin: 0;
+            letter-spacing: 0.01em;
+        }
+
+        .eyebrow {
+            font-family: 'IBM Plex Mono', monospace;
+            font-size: 10px;
+            letter-spacing: 0.12em;
+            text-transform: uppercase;
+            color: var(--leaf-dark);
+            display: block;
+            margin-bottom: 2px;
         }
 
         .lang-toggle {
             display: flex;
-            background: #E8F1E8;
+            background: var(--parchment-light);
+            border: 1px solid var(--rule);
             border-radius: 20px;
             overflow: hidden;
         }
@@ -51,87 +145,269 @@
         }
 
         .lang-toggle label {
-            padding: 8px 15px;
+            padding: 7px 14px;
             cursor: pointer;
-            font-weight: bold;
-            color: #2C5F2D;
-            transition: 0.3s;
+            font-weight: 500;
+            font-size: 13px;
+            color: var(--ink-soft);
+            transition: 0.2s;
         }
 
         .lang-toggle input:checked+label {
-            background: #97BC62;
+            background: var(--leaf);
             color: white;
+        }
+
+        .lang-toggle label:focus-visible,
+        button:focus-visible,
+        input:focus-visible {
+            outline: 2px solid var(--turmeric);
+            outline-offset: 2px;
         }
 
         .chat-box {
             flex: 1;
             overflow-y: auto;
-            padding: 10px;
-            border: 1px solid #E8F1E8;
-            border-radius: 10px;
-            margin-bottom: 20px;
-            background-color: #FAFCFA;
+            padding: 20px;
+            background:
+                linear-gradient(var(--parchment-light), var(--parchment-light));
+            display: flex;
+            flex-direction: column;
+        }
+
+        .chat-box::-webkit-scrollbar {
+            width: 8px;
+        }
+
+        .chat-box::-webkit-scrollbar-thumb {
+            background: var(--rule);
+            border-radius: 4px;
         }
 
         .message {
-            margin-bottom: 15px;
-            padding: 10px 15px;
-            border-radius: 15px;
-            max-width: 80%;
-            line-height: 1.5;
+            margin-bottom: 14px;
+            padding: 12px 16px;
+            border-radius: 3px;
+            max-width: 82%;
+            line-height: 1.55;
+            font-size: 14.5px;
+            animation: slideUp 0.28s ease-out;
+        }
+
+        @keyframes slideUp {
+            from {
+                opacity: 0;
+                transform: translateY(6px);
+            }
+
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
         }
 
         .user-msg {
-            background-color: #2C5F2D;
-            color: white;
+            background-color: var(--ink);
+            color: var(--parchment-light);
             align-self: flex-end;
             margin-left: auto;
-            border-bottom-right-radius: 2px;
+            border-bottom-right-radius: 0;
         }
 
         .ai-msg {
-            background-color: #E8F1E8;
-            color: #333;
+            background-color: var(--card);
+            color: var(--ink);
             align-self: flex-start;
             margin-right: auto;
-            border-bottom-left-radius: 2px;
+            border: 1px solid var(--rule);
+            border-left: 3px solid var(--leaf);
+            border-bottom-left-radius: 0;
         }
 
-        /* Fixed the CSS class name here to match your HTML */
+        .ai-msg.status-danger {
+            border-left-color: var(--danger);
+            background: var(--danger-bg);
+        }
+
+        .ai-msg.status-not-found {
+            border-left-color: var(--turmeric);
+        }
+
+        .ai-msg.status-thinking {
+            border-left-color: var(--rule);
+            color: var(--ink-soft);
+            font-style: italic;
+        }
+
+        .alert-title {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-family: 'Fraunces', serif;
+            font-weight: 600;
+            color: var(--danger);
+            margin-bottom: 4px;
+        }
+
+        .reasoning-note {
+            display: block;
+            margin-top: 6px;
+            font-size: 12.5px;
+            color: var(--ink-soft);
+            font-style: italic;
+        }
+
+        .specimen-card {
+            font-size: 14.5px;
+        }
+
+        .specimen-title {
+            font-family: 'Fraunces', serif;
+            font-style: italic;
+            font-weight: 500;
+            font-size: 17px;
+            color: var(--leaf-dark);
+            margin: 0 0 2px 0;
+        }
+
+        .specimen-sub {
+            font-family: 'IBM Plex Mono', monospace;
+            font-size: 10.5px;
+            letter-spacing: 0.06em;
+            text-transform: uppercase;
+            color: var(--ink-soft);
+            margin: 0 0 10px 0;
+        }
+
+        .specimen-divider {
+            border: none;
+            border-top: 1px dashed var(--rule);
+            margin: 10px 0;
+        }
+
+        .property-row {
+            display: grid;
+            grid-template-columns: 92px 1fr;
+            gap: 8px;
+            padding: 4px 0;
+        }
+
+        .property-label {
+            font-family: 'IBM Plex Mono', monospace;
+            font-size: 10.5px;
+            letter-spacing: 0.04em;
+            text-transform: uppercase;
+            color: var(--turmeric);
+            padding-top: 2px;
+        }
+
+        .property-value {
+            color: var(--ink);
+        }
+
+        .karma-block {
+            margin-top: 10px;
+            padding-top: 10px;
+            border-top: 1px dashed var(--rule);
+        }
+
+        .karma-label {
+            font-family: 'IBM Plex Mono', monospace;
+            font-size: 10.5px;
+            letter-spacing: 0.04em;
+            text-transform: uppercase;
+            color: var(--leaf-dark);
+            display: block;
+            margin-bottom: 3px;
+        }
+
         .input-container {
             display: flex;
-            gap: 10px;
+            gap: 8px;
             align-items: center;
+            padding: 16px 20px;
+            border-top: 1px solid var(--rule);
         }
 
         input[type="text"] {
             flex: 1;
-            padding: 15px;
-            border: 1px solid #ccc;
-            border-radius: 10px;
+            padding: 13px 15px;
+            border: 1px solid var(--rule);
+            border-radius: 4px;
             outline: none;
-            font-size: 16px;
+            font-size: 15px;
+            font-family: 'Work Sans', sans-serif;
+            background: var(--parchment-light);
+            color: var(--ink);
+        }
+
+        input[type="text"]::placeholder {
+            color: #8A9A8C;
         }
 
         button {
-            background-color: #97BC62;
-            color: white;
             border: none;
-            padding: 15px 25px;
-            border-radius: 10px;
+            border-radius: 4px;
             cursor: pointer;
-            font-size: 16px;
-            font-weight: bold;
-            transition: 0.3s;
+            font-size: 15px;
+            font-weight: 600;
+            font-family: 'Work Sans', sans-serif;
+            transition: 0.2s;
         }
 
-        button:hover {
-            background-color: #2C5F2D;
+        #ask-btn {
+            background-color: var(--leaf);
+            color: white;
+            padding: 13px 22px;
         }
 
-        button:disabled {
-            background-color: #ccc;
+        #ask-btn:hover:not(:disabled) {
+            background-color: var(--leaf-dark);
+        }
+
+        #ask-btn:disabled {
+            background-color: #D8DBD3;
+            color: #8A9A8C;
             cursor: not-allowed;
+        }
+
+        #mic-btn {
+            background-color: var(--card);
+            color: var(--danger);
+            border: 1px solid var(--rule);
+            border-radius: 50%;
+            width: 46px;
+            height: 46px;
+            padding: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 17px;
+            flex-shrink: 0;
+        }
+
+        #mic-btn:hover {
+            border-color: var(--danger);
+        }
+
+        #mic-btn.recording {
+            background-color: var(--danger);
+            color: white;
+            animation: pulse 1.1s infinite;
+        }
+
+        @keyframes pulse {
+            0% {
+                box-shadow: 0 0 0 0 rgba(168, 64, 47, 0.45);
+            }
+
+            70% {
+                box-shadow: 0 0 0 10px rgba(168, 64, 47, 0);
+            }
+
+            100% {
+                box-shadow: 0 0 0 0 rgba(168, 64, 47, 0);
+            }
         }
     </style>
 </head>
@@ -140,144 +416,84 @@
 
     <div class="chat-container">
         <div class="header-area">
-            <h2>🌿 Ayurvedic AI</h2>
-
+            <div class="brand">
+                <svg class="leaf-mark" viewBox="0 0 28 28" fill="none" xmlns="http://www.w3.org/2000/svg"
+                    aria-hidden="true">
+                    <path d="M6 22C6 14 11 6 22 5C22 15 15 21 6 22Z" fill="var(--leaf)" opacity="0.85" />
+                    <path d="M7 21C11 15 15 11 21 6" stroke="var(--parchment-light)" stroke-width="1"
+                        stroke-linecap="round" />
+                </svg>
+                <div>
+                    <span class="eyebrow">Herbarium Assistant</span>
+                    <h2>Ayurvedic AI</h2>
+                </div>
+            </div>
             <div class="lang-toggle">
                 <input type="radio" id="lang-en" name="language" value="en" checked>
                 <label for="lang-en">English</label>
-
                 <input type="radio" id="lang-hi" name="language" value="hi">
                 <label for="lang-hi">हिंदी</label>
             </div>
         </div>
 
-        <div class="chat-box" id="chatBox">
-            <div class="message ai-msg">Namaste! Choose your language at the top, then tell me your symptoms or click
-                the microphone to speak!</div>
+        <div class="chat-box" id="chatBox" aria-live="polite">
+            <div class="message ai-msg">Namaste! Tell me your symptoms, and I'll check the classical texts for a
+                verified remedy.</div>
         </div>
 
         <div class="input-container">
             <input type="text" id="user-input" placeholder="Type your symptoms here..."
-                onkeypress="handleKeyPress(event)">
-
-            <button id="mic-btn"
-                style="background-color: #ff4757; color: white; border-radius: 50%; border: none; padding: 15px; cursor: pointer; font-size: 16px; display: flex; align-items: center; justify-content: center;">🎙️</button>
-
+                onkeypress="handleKeyPress(event)" aria-label="Describe your symptoms">
+            <button id="mic-btn" aria-label="Speak your symptoms" title="Speak your symptoms">🎙️</button>
             <button id="ask-btn">Ask</button>
         </div>
-
-        <audio id="ai-audio" controls style="display: none;"></audio>
     </div>
 
     <script>
-        // 1. Element References (All IDs match perfectly now!)
         const chatBox = document.getElementById("chatBox");
         const userInput = document.getElementById("user-input");
         const askBtn = document.getElementById("ask-btn");
         const micBtn = document.getElementById("mic-btn");
-        const audioPlayer = document.getElementById("ai-audio");
 
-        // Allow hitting "Enter" to send
         function handleKeyPress(e) { if (e.key === 'Enter') sendMessage(); }
         askBtn.addEventListener('click', sendMessage);
 
-        // 2. SPEECH-TO-TEXT LOGIC
-    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+        const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+        if (SpeechRecognition) {
+            const recognition = new SpeechRecognition();
+            recognition.continuous = false;
+            recognition.interimResults = false;
 
-    if (SpeechRecognition) {
-        const recognition = new SpeechRecognition();
-        recognition.continuous = false;
-        recognition.interimResults = false;
-
-        micBtn.addEventListener('click', () => {
-            try {
-                // Check if Hindi is selected to understand Hindi voice!
+            micBtn.addEventListener('click', () => {
                 const isHindi = document.getElementById('lang-hi').checked;
                 recognition.lang = isHindi ? 'hi-IN' : 'en-US';
-
                 recognition.start();
-                micBtn.innerText = "🔴"; // Turn red while listening
-            } catch (error) {
-                console.error("Microphone start error:", error);
-            }
-        });
+                micBtn.classList.add('recording');
+            });
 
-        recognition.onresult = (event) => {
-            const transcript = event.results[0][0].transcript;
-            userInput.value = transcript; // Put words in the box
-            micBtn.innerText = "🎙️"; // Reset mic icon
-
-            // Automatically send the message after talking!
-            if (typeof sendMessage === "function") {
+            recognition.onresult = (event) => {
+                userInput.value = event.results[0][0].transcript;
+                micBtn.classList.remove('recording');
                 sendMessage();
-            }
-        };
+            };
+            recognition.onerror = () => { micBtn.classList.remove('recording'); };
+            recognition.onend = () => { micBtn.classList.remove('recording'); };
+        } else {
+            micBtn.style.display = "none";
+        }
 
-        // Robust error handling to catch permission issues
-        recognition.onerror = (event) => {
-            console.error("Speech recognition error detected:", event.error);
-            micBtn.innerText = "🎙️"; // Reset if there's an error
+        function formatMarkdown(text) {
+            return text.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>').replace(/\n/g, '<br>');
+        }
 
-            if (event.error === 'not-allowed') {
-                alert("Microphone access was denied. Please allow it in the browser settings and ensure you are accessing via http://127.0.0.1:5000.");
-            }
-        };
+        function speakResponse(text, langCode) {
+            window.speechSynthesis.cancel();
+            const cleanText = text.replace(/<[^>]*>?/gm, '').replace(/\*/g, '');
+            const utterance = new SpeechSynthesisUtterance(cleanText);
+            utterance.lang = langCode === 'hi' ? 'hi-IN' : 'en-US';
+            window.speechSynthesis.speak(utterance);
+        }
 
-        // Failsafe: Reset the mic icon if the browser stops listening silently
-        recognition.onend = () => {
-            micBtn.innerText = "🎙️";
-        };
-
-    } else {
-        micBtn.style.display = "none"; // Hide mic if browser doesn't support it
-        console.error("Speech Recognition API is not supported in this browser.");
-    }
-
-            async function sendMessage() {
-                const text = userInput.value.trim();
-                if (!text) return;
-
-              
-                audioPlayer.volume = 0;
-                audioPlayer.play().catch(e => { });
-                audioPlayer.pause();
-                audioPlayer.volume = 1;
-                // ------------------------------
-
-                const selectedLang = document.querySelector('input[name="language"]:checked').value;
-
-                // Show User Message
-                appendMessage(text, "user-msg");
-                userInput.value = "";
-                askBtn.disabled = true;
-                askBtn.innerText = "...";
-
-                try {
-                    const response = await fetch('/ask', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ message: text, language: selectedLang })
-                    });
-
-                    const data = await response.json();
-
-                    // Show AI Answer
-                    appendMessage(data.answer, "ai-msg");
-
-                    // Play the real audio!
-                    if (data.audio_url) {
-                        audioPlayer.src = data.audio_url;
-                        audioPlayer.play();
-                    }
-
-                } catch (error) {
-                    appendMessage("Sorry, the server is offline.", "ai-msg");
-                }
-
-                askBtn.disabled = false;
-                askBtn.innerText = "Ask";
-            }
-      
         function appendMessage(text, className) {
             const msgDiv = document.createElement("div");
             msgDiv.className = `message ${className}`;
@@ -285,31 +501,104 @@
             chatBox.appendChild(msgDiv);
             chatBox.scrollTop = chatBox.scrollHeight;
         }
-        // Function to convert simple Markdown (**bold**, \n newlines) to HTML
-            function formatMarkdown(text) {
-                return text
-                    .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>') // Converts **text** to <strong>text</strong>
-                    .replace(/\n/g, '<br>');                        // Converts line breaks to <br>
-            }
 
-            // In your fetch('/ask') response block:
-            fetch('/ask', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ message: userInput, language: currentLang })
-            })
-                .then(res => res.json())
-                .then(data => {
-                    // 1. Create response bubble
-                    let botBubble = document.createElement('div');
-                    botBubble.className = 'bot-message';
+        async function sendMessage() {
+            const text = userInput.value.trim();
+            if (!text) return;
 
-                    // 2. Use innerHTML with formatMarkdown instead of innerText
-                    botBubble.innerHTML = formatMarkdown(data.answer);
+            const selectedLang = document.querySelector('input[name="language"]:checked').value;
+            appendMessage(text, "user-msg");
+            userInput.value = "";
+            askBtn.disabled = true;
+            askBtn.innerText = "...";
 
-                    chatContainer.appendChild(botBubble);
+            const aiMsgDiv = document.createElement("div");
+            aiMsgDiv.className = "message ai-msg status-thinking";
+            aiMsgDiv.innerText = "Checking the classical texts...";
+            chatBox.appendChild(aiMsgDiv);
+            chatBox.scrollTop = chatBox.scrollHeight;
+
+            let fullResponse = "";
+            let status = null;
+
+            try {
+                const response = await fetch('http://127.0.0.1:8000/ask', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ symptom: text, language: selectedLang })
                 });
-                
+
+                const reader = response.body.getReader();
+                const decoder = new TextDecoder("utf-8");
+                let streamBuffer = "";
+
+                while (true) {
+                    const { done, value } = await reader.read();
+                    if (done) break;
+
+                    streamBuffer += decoder.decode(value, { stream: true });
+                    const lines = streamBuffer.split('\n\n');
+                    streamBuffer = lines.pop();
+
+                    for (let line of lines) {
+                        if (!line.startsWith('data: ')) continue;
+                        const content = line.substring(6);
+
+                        if (content === '[DONE]') {
+                            askBtn.disabled = false;
+                            askBtn.innerText = "Ask";
+                            if (status === "SAFE") speakResponse(fullResponse, selectedLang);
+                            return;
+                        }
+
+                        let parsed;
+                        try {
+                            parsed = JSON.parse(content);
+                        } catch (e) {
+                            continue; // split JSON chunk, wait for the rest
+                        }
+
+                        // Status arrives once, as its own event, decided server-side
+                        // BEFORE any generation tokens are streamed. We never infer
+                        // status by scanning generated text for tag substrings.
+                        if (parsed.status) {
+                            status = parsed.status;
+                            aiMsgDiv.classList.remove('status-thinking');
+
+                            if (status === "DANGER") {
+                                aiMsgDiv.classList.add('status-danger');
+                                aiMsgDiv.innerHTML =
+                                    `<div class="alert-title">🛑 Safety Alert</div>` +
+                                    `The classical texts indicate this substance causes or aggravates your condition.` +
+                                    (parsed.reasoning ? `<span class="reasoning-note">${parsed.reasoning}</span>` : '');
+                            } else if (status === "NOT_FOUND") {
+                                aiMsgDiv.classList.add('status-not-found');
+                                aiMsgDiv.innerHTML =
+                                    `<i>No explicit classical remedy was found in the database for this specific symptom.</i>` +
+                                    (parsed.reasoning ? `<span class="reasoning-note">${parsed.reasoning}</span>` : '');
+                            } else if (status === "SAFE") {
+                                aiMsgDiv.innerHTML = "";
+                            }
+                            chatBox.scrollTop = chatBox.scrollHeight;
+                            continue;
+                        }
+
+                        // Token events only apply once status is confirmed SAFE
+                        if (parsed.text && status === "SAFE") {
+                            fullResponse += parsed.text;
+                            aiMsgDiv.innerHTML = formatMarkdown(fullResponse);
+                            chatBox.scrollTop = chatBox.scrollHeight;
+                        }
+                    }
+                }
+            } catch (error) {
+                aiMsgDiv.classList.remove('status-thinking');
+                aiMsgDiv.classList.add('status-danger');
+                aiMsgDiv.innerHTML = `<span>Error connecting to server.</span>`;
+                askBtn.disabled = false;
+                askBtn.innerText = "Ask";
+            }
+        }
     </script>
 </body>
 

@@ -28,32 +28,47 @@ sentence_transformer_ef = SentenceTransformerEmbeddingFunction(
 collection = chroma_client.get_or_create_collection(
     name="bhavprakash_collection", embedding_function=sentence_transformer_ef
 )
+def get_smart_search_query(raw_input: str) -> str:
+    """
+    Dynamically translates ANY user input into the perfect English + Sanskrit search terms.
+    Works for all 1100+ diseases without needing if/else blocks.
+    """
+    prompt = f"""
+    A patient stated their symptom (which may be in Hinglish or have typos): "{raw_input}"
+    
+    1. Identify the core disease or symptom.
+    2. Translate it into standard English medical terms.
+    3. Add the classical Ayurvedic Sanskrit name for that disease (e.g., Jwara for fever, Kamala for jaundice, Atisara for diarrhea, Shwasa for asthma, Kushtha for skin disease, etc.).
+    
+    Output ONLY a space-separated string of these highly relevant keywords. No punctuation, no sentences.
+    
+    Examples:
+    - "mujhe bhkhar hai" -> fever jwara
+    - "pet me dard" -> stomach ache abdominal pain shula udararoga
+    - "peeliya ho gaya" -> jaundice kamala
+    - "khasi aa rahi hai" -> cough kasa
+    """
+    
+    try:
+        response = client.chat.completions.create(
+            model="meta-llama/llama-3.3-70b-instruct",
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0.0, 
+        )
+        return response.choices[0].message.content.strip().lower()
+    except Exception:
+        return raw_input.lower()
+
 
 def ask_ayurveda_ai(user_symptom: str, language: str):
     
-    # 1. THE MEDICAL ROUTER: Force ChromaDB to look for exact Ayurvedic terms
-    search_query = user_symptom.lower()
+    search_query = get_smart_search_query(user_symptom)
+    print(f"\nUser typed: {user_symptom} | AI Search Query: {search_query}")
     
-    if "fever" in search_query or "bukhar" in search_query:
-        search_query = "fever jwara guduchi kiratatikta parpata triphala"
-    elif "cough" in search_query or "cold" in search_query:
-        search_query = "cough kasa shwasa pippali kantakari haritaki"
-    elif "digestion" in search_query or "stomach" in search_query:
-        search_query = "digestion agni amapachana shunthi chitraka"
-
-    # 2. Fetch 5 results to ensure we bypass the "Ghee" junk
     results = collection.query(query_texts=[search_query], n_results=5)
     retrieved_context = "\n\n".join(results["documents"][0])
-
-    # 3. 🚨 DEBUGGING: This will print ChromaDB's exact findings in your VS Code terminal!
-    print("\n\n=== CHROMA DB RETRIEVED THESE ROWS ===")
-    print(retrieved_context)
-    print("======================================\n\n")
-
-    if not retrieved_context.strip():
-        if language == "hi":
-            return "मुझे इस समस्या के लिए डेटाबेस में कोई सटीक औषधि नहीं मिली।"
-        return "Sorry, no relevant information was found in the database."
+    
+  
 
     
     system_prompt = f"""
@@ -93,7 +108,7 @@ def ask_ayurveda_ai(user_symptom: str, language: str):
     except Exception as e:
         return f"API Error: {e}"
 def clean_text_for_speech(text):
-    # Removes markdown asterisks (**) so the TTS doesn't say "asterisk asterisk" aloud
+    
     return re.sub(r'\*+', '', text)
 
 
