@@ -2,7 +2,7 @@ import os
 import pandas as pd
 import chromadb
 from chromadb.utils.embedding_functions import SentenceTransformerEmbeddingFunction
-PERSIST_PATH = "./chroma_ayurveda_db"   # change this if your DB lives elsewhere
+PERSIST_PATH = "./chroma_ayurveda_db"   
 
 client = chromadb.PersistentClient(path=PERSIST_PATH)
 collections = client.list_collections()
@@ -22,6 +22,17 @@ else:
 # Set this to your exact master CSV filename
 CSV_FILE_PATH = "Master_Ayurveda_Database_Fixed.csv"
 DB_PATH = "./ayurveda_vector_db"
+
+embedding_fn = SentenceTransformerEmbeddingFunction(model_name="all-MiniLM-L6-v2")
+client = chromadb.PersistentClient(path="./ayurveda_vector_db")
+collection = client.get_collection("bhavprakash_collection", embedding_function=embedding_fn)
+
+for query in ["diabetes", "Prameha", "high blood sugar", "madhumeha"]:
+    print(f"\n=== Query: {query} ===")
+    results = collection.query(query_texts=[query], n_results=3)
+    for i, doc in enumerate(results["documents"][0]):
+        print(f"--- match {i+1} ---")
+        print(doc[:300])
 
 def ingest_data():
     # 1. Verify file existence

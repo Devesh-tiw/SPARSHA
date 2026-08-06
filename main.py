@@ -33,8 +33,11 @@ client = AsyncOpenAI(
     api_key=api_key,
 )
 
-PERSIST_PATH = "./chroma_ayurveda_db"
-COLLECTION_NAME = "ayurvedic_herbs"
+PERSIST_PATH = "./ayurveda_vector_db"
+COLLECTION_NAME = "bhavprakash_collection"
+
+from chromadb.utils.embedding_functions import SentenceTransformerEmbeddingFunction
+embedding_fn = SentenceTransformerEmbeddingFunction(model_name="all-MiniLM-L6-v2")
 
 chroma_client = chromadb.PersistentClient(path=PERSIST_PATH)
 
@@ -48,7 +51,7 @@ if COLLECTION_NAME not in existing:
         f"Fix COLLECTION_NAME or PERSIST_PATH above to match your ingestion script."
     )
 
-collection = chroma_client.get_collection(COLLECTION_NAME)
+collection = chroma_client.get_collection(COLLECTION_NAME, embedding_function=embedding_fn)
 print(f"[startup] '{COLLECTION_NAME}' doc count: {collection.count()}")
 
 if collection.count() == 0:
@@ -70,6 +73,36 @@ class Classification(BaseModel):
     verdict: Verdict
     matched_herb: str
     reasoning: str
+
+
+NORMALIZE_PROMPT = """You expand patient symptom queries for an Ayurvedic vector search system. This runs on EVERY query regardless of which disease it is — do not special-case any particular condition.
+
+Given a symptom in English or Hinglish, return a short comma-separated list of search terms including:
+1. The original term as typed.
+2. Its common English medical synonym(s), if different.
+3. The classical Sanskrit/Ayurvedic disease term(s) most likely used for this condition in Charaka/Sushruta/Bhavaprakasha-style texts (e.g. diabetes -> Prameha/Madhumeha, fever -> Jwara, cough -> Kasa, asthma -> Shwasa, jaundice -> Kamala, arthritis -> Sandhivata/Amavata).
+
+If you do not know a confident classical term for this symptom, just return the English synonyms — do not guess or invent a Sanskrit term.
+
+Return ONLY the comma-separated term list, nothing else. No numbering, no explanation, no quotation marks.
+
+Symptom: {raw_symptom}"""
+
+
+async def normalize_query(raw_symptom: str) -> str:
+    try:
+        resp = await client.chat.completions.create(
+            model="meta-llama/llama-3.3-70b-instruct",
+            messages=[
+                {"role": "system", "content": NORMALIZE_PROMPT.format(raw_symptom=raw_symptom)},
+                {"role": "user", "content": "Expand."},
+            ],
+            temperature=0.0,
+        )
+        expanded = resp.choices[0].message.content.strip()
+        return f"{raw_symptom}, {expanded}"
+    except Exception:
+        return raw_symptom
 
 
 CLASSIFY_PROMPT = """You are an Ayurvedic Medical Verifier. Evaluate ONLY the single best-matching herb entry below against the patient symptom. Ignore contraindication/avoid-lists for OTHER diseases mentioned in the text — only judge this herb's relationship to THIS symptom.
@@ -110,17 +143,42 @@ Classical Properties:
 Clinical Action (Karma): [Extract]"""
 
 
-def retrieve_context(symptom: str) -> str:
-    results = collection.query(query_texts=[symptom], n_results=5)
-    docs = results.get("documents", [[]])[0]
-    metas = results.get("metadatas", [[]])[0]
-    if not docs:
-        return "No matching documents found."
-    parts = [
-        f"[Herb: {(meta or {}).get('herb_name', 'unknown')}]\n{doc}"
-        for doc, meta in zip(docs, metas)
-    ]
-    return "\n\n---\n\n".join(parts)
+def retrieve_candidates(symptom: str, candidates_per_term: int = 3, top_n: int = 5):
+    """Query each normalized term separately (per fix #5), rank the merged
+    candidates by actual embedding distance (not term/insertion order), and
+    return the ranked list itself -- as (doc_id, distance, doc_text) tuples --
+    rather than collapsing it into one string.
+
+    Returning the whole ranked list (instead of joining just the top match
+    into a single blob) is what lets the caller check herb #2, #3, ... when
+    the closest embedding match doesn't happen to explicitly treat the
+    symptom. This is dataset-wide and disease-agnostic: nothing here is
+    keyed off any particular symptom or Sanskrit term, only distance scores.
+    """
+    terms = [t.strip() for t in symptom.split(",") if t.strip()]
+    if not terms:
+        terms = [symptom]
+
+    best_by_id = {}  # doc_id -> (distance, doc_text)
+    for term in terms:
+        results = collection.query(
+            query_texts=[term],
+            n_results=candidates_per_term,
+            include=["documents", "distances"],
+        )
+        ids = results.get("ids", [[]])[0]
+        docs = results.get("documents", [[]])[0]
+        dists = results.get("distances", [[]])[0]
+        for doc_id, doc, dist in zip(ids, docs, dists):
+            if doc_id not in best_by_id or dist < best_by_id[doc_id][0]:
+                best_by_id[doc_id] = (dist, doc)
+
+    ranked = sorted(best_by_id.items(), key=lambda kv: kv[1][0])[:top_n]
+
+    preview = ", ".join(f"{doc_id}(d={dist:.3f})" for doc_id, (dist, _) in ranked)
+    print(f"[retrieve] ranked candidates: {preview or 'none'}")
+
+    return [(doc_id, dist, doc) for doc_id, (dist, doc) in ranked]
 
 
 async def classify(user_symptom: str, retrieved_context: str) -> Classification:
@@ -149,9 +207,50 @@ async def classify(user_symptom: str, retrieved_context: str) -> Classification:
     return Classification.model_validate_json(resp.choices[0].message.content)
 
 
-async def stream_response(user_symptom: str, retrieved_context: str):
+async def find_verdict(user_symptom: str, candidates: list):
+    """Walk the ranked candidates one herb at a time -- the closest embedding
+    match first -- and stop at the first one explicitly confirmed SAFE.
+
+    Each herb is still judged strictly on its own text alone (never blended
+    with others), which is what actually fixed the original mis-classification.
+    But instead of giving up after herb #1, we keep going down the ranked list
+    if herb #1 turns out to be silent on this symptom -- since with ~1,110
+    herbs, the single nearest embedding match often isn't the only one worth
+    checking. If a closer herb is explicitly DANGER for this symptom, that's
+    surfaced (safety-first) unless a later, still-close candidate is SAFE.
+    No disease name or herb name is special-cased here; this applies to every
+    query the same way.
+    """
+    first_danger = None
+    for doc_id, dist, doc in candidates:
+        try:
+            result = await classify(user_symptom, doc)
+        except Exception as e:
+            print(f"[classify] candidate={doc_id} errored: {e}")
+            continue
+        print(f"[classify] candidate={doc_id} (d={dist:.3f}) -> {result.verdict}")
+        if result.verdict == Verdict.SAFE:
+            return result, doc
+        if result.verdict == Verdict.DANGER and first_danger is None:
+            first_danger = (result, doc)
+
+    if first_danger:
+        return first_danger
+    return Classification(
+        verdict=Verdict.NOT_FOUND,
+        matched_herb="",
+        reasoning="None of the closest classical matches explicitly treat this symptom.",
+    ), None
+
+
+async def stream_response(user_symptom: str, candidates: list):
+    if not candidates:
+        yield f"data: {json.dumps({'status': 'NOT_FOUND', 'reasoning': 'No matching documents found.'})}\n\n"
+        yield "data: [DONE]\n\n"
+        return
+
     try:
-        result = await classify(user_symptom, retrieved_context)
+        result, matched_doc = await find_verdict(user_symptom, candidates)
     except Exception as e:
         yield f"data: {json.dumps({'status': 'NOT_FOUND', 'reasoning': f'Classifier error: {e}'})}\n\n"
         yield "data: [DONE]\n\n"
@@ -167,6 +266,7 @@ async def stream_response(user_symptom: str, retrieved_context: str):
         yield "data: [DONE]\n\n"
         return
 
+    retrieved_context = matched_doc
     yield f"data: {json.dumps({'status': 'SAFE'})}\n\n"
 
     response_stream = await client.chat.completions.create(
@@ -189,15 +289,14 @@ async def stream_response(user_symptom: str, retrieved_context: str):
 
 @app.post("/ask")
 async def ask(req: AskRequest):
-    context = retrieve_context(req.symptom)
+    normalized_symptom = await normalize_query(req.symptom)
+    print(f"[normalize] '{req.symptom}' -> '{normalized_symptom}'")
+    candidates = retrieve_candidates(normalized_symptom)
     return StreamingResponse(
-        stream_response(req.symptom, context),
+        stream_response(req.symptom, candidates),
         media_type="text/event-stream",
         headers={
             "Cache-Control": "no-cache",
-            "X-Accel-Buffering": "no",  # disable nginx buffering if you're behind a proxy later
+            "X-Accel-Buffering": "no",
         },
     )
-
-
-# uvicorn main:app --reload --port 8000
