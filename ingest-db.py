@@ -1,12 +1,5 @@
 #!/usr/bin/env python3
-"""Build the complete SPARSHA Chroma collection without discarding source data.
 
-Safety design:
-- 726 conservatively accepted Bhāvaprakāśa rows are recommendation-eligible.
-- quarantined Bhāvaprakāśa rows and every raw GRETIL verse are retained as
-  evidence/audit records but excluded from recommendation retrieval.
-- no English or botanical value is invented or copied from unverified columns.
-"""
 
 from __future__ import annotations
 
