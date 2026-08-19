@@ -392,7 +392,6 @@ def query_events(query: str) -> Iterator[str]:
         )
         yield from stream_safe_record(query, verdict)
     except Exception as exc:
-        # Errors remain discrete and can never be misread by the UI as a safety verdict.
         yield sse({"status": "NOT_FOUND", "reasoning": f"Backend error: {exc}"})
         yield sse_done()
 
