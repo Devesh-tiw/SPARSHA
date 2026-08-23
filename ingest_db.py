@@ -1,4 +1,13 @@
 #!/usr/bin/env python3
+"""Build the complete SPARSHA Chroma collection without discarding source data.
+
+Safety design:
+- 726 conservatively accepted Bhāvaprakāśa rows are recommendation-eligible.
+- quarantined Bhāvaprakāśa rows and every raw GRETIL verse are retained as
+  evidence/audit records but excluded from recommendation retrieval.
+- no English or botanical value is invented or copied from unverified columns.
+"""
+
 from __future__ import annotations
 
 import argparse
@@ -8,6 +17,7 @@ import os
 import re
 from pathlib import Path
 from typing import Iterable
+
 import chromadb
 from chromadb.utils.embedding_functions import SentenceTransformerEmbeddingFunction
 from dotenv import load_dotenv
@@ -68,6 +78,24 @@ def schema_document(row: dict[str, str]) -> str:
     return "\n".join(f"{labels[key]}: {clean(row.get(key))}" for key in SCHEMA)
 
 
+def requires_specialist_quarantine(row: dict[str, str]) -> bool:
+    """Keep high-risk/toxic/mineral records searchable but never recommend them."""
+    source_id = clean(row.get("source_verse_ids"))
+    match = re.fullmatch(r"BPN_(\d+)", source_id)
+    number = int(match.group(1)) if match else -1
+    # In the legacy source, this contiguous block contains metals, minerals,
+    # processed poisons and purification-dependent substances. Its inherited
+    # varga label is unreliable, so the source ID range is used conservatively.
+    if 589 <= number <= 695:
+        return True
+    headword = clean(row.get("herb_sanskrit"))
+    high_risk_names = (
+        "अहिफेन", "धत्तूर", "जयपाल", "कुपीलु", "वत्सनाभ", "करवीर",
+        "गुञ्जा", "भल्लातक", "विषमुष्टि",
+    )
+    return any(name in headword for name in high_risk_names)
+
+
 def load_clean_rows() -> list[dict]:
     if not CLEAN_CSV.exists():
         raise FileNotFoundError(f"Run gretil_pipeline/prepare_bhavaprakasha.py first: {CLEAN_CSV}")
@@ -80,6 +108,7 @@ def load_clean_rows() -> list[dict]:
         for row in reader:
             normalized = {key: clean(row.get(key)) for key in SCHEMA}
             verse_id = normalized["source_verse_ids"]
+            quarantined = requires_specialist_quarantine(normalized)
             records.append({
                 "id": stable_id("bp_safe", verse_id),
                 "document": schema_document(normalized),
@@ -88,9 +117,10 @@ def load_clean_rows() -> list[dict]:
                     "source_verse_ids": verse_id,
                     "herb_sanskrit": normalized["herb_sanskrit"],
                     "varga_category": normalized["varga_category"],
-                    "record_type": "herb_entry",
-                    "review_status": "structurally_accepted",
-                    "eligible_for_recommendation": True,
+                    "record_type": "high_risk_or_purification_dependent" if quarantined else "herb_entry",
+                    "review_status": "requires_specialist_review" if quarantined else "structurally_accepted",
+                    "eligible_for_recommendation": not quarantined,
+                    "toxicity_or_purification_flag": quarantined,
                 },
             })
     return records
@@ -193,8 +223,11 @@ def ingest(reset: bool = False) -> None:
     print("\nIngestion complete")
     print(f"  Chroma path: {DB_PATH}")
     print(f"  Collection: {COLLECTION_NAME}")
-    print(f"  Recommendation-eligible Bhavaprakasha entries: {len(clean_records)}")
-    print(f"  Quarantined Bhavaprakasha rows retained: {len(review_records)}")
+    eligible_count = sum(item["metadata"]["eligible_for_recommendation"] for item in clean_records)
+    high_risk_count = len(clean_records) - eligible_count
+    print(f"  Recommendation-eligible Bhavaprakasha entries: {eligible_count}")
+    print(f"  High-risk/purification-dependent entries quarantined: {high_risk_count}")
+    print(f"  Structurally quarantined Bhavaprakasha rows retained: {len(review_records)}")
     print(f"  Raw GRETIL source verses retained: {len(raw_records)}")
     print(f"  Total collection records: {collection.count()}")
 

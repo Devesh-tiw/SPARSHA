@@ -405,7 +405,8 @@
             flex-shrink: 0;
         }
 
-        #stop-speech-btn:disabled { opacity: 0.45; cursor: not-allowed; }
+        #stop-speech-btn.tts-off { opacity: 0.55; background: #f2eee5; }
+        #stop-speech-btn.tts-on { opacity: 1; border-color: var(--leaf); color: var(--leaf-dark); }
 
         #mic-btn.recording {
             background-color: var(--danger);
@@ -456,7 +457,7 @@
             <input type="text" id="user-input" placeholder="Type your symptoms here..."
                 onkeypress="handleKeyPress(event)" aria-label="Describe your symptoms">
             <button id="mic-btn" aria-label="Speak your symptoms" title="Speak your symptoms">🎙️</button>
-            <button id="stop-speech-btn" aria-label="Stop speaking" title="Stop speaking" disabled>⏹</button>
+            <button id="stop-speech-btn" class="tts-on" aria-label="Turn voice output off" title="Voice output: ON">🔊</button>
             <button id="ask-btn">Ask</button>
         </div>
     </div>
@@ -467,13 +468,25 @@
         const askBtn = document.getElementById("ask-btn");
         const micBtn = document.getElementById("mic-btn");
         const stopSpeechBtn = document.getElementById("stop-speech-btn");
+        let ttsEnabled = localStorage.getItem("sparsha_tts_enabled") !== "false";
+
+        function updateTtsButton() {
+            stopSpeechBtn.innerText = ttsEnabled ? "🔊" : "🔇";
+            stopSpeechBtn.title = `Voice output: ${ttsEnabled ? "ON" : "OFF"}`;
+            stopSpeechBtn.setAttribute("aria-label", ttsEnabled ? "Turn voice output off" : "Turn voice output on");
+            stopSpeechBtn.classList.toggle("tts-on", ttsEnabled);
+            stopSpeechBtn.classList.toggle("tts-off", !ttsEnabled);
+        }
 
         function handleKeyPress(e) { if (e.key === 'Enter') sendMessage(); }
         askBtn.addEventListener('click', sendMessage);
         stopSpeechBtn.addEventListener('click', () => {
-            window.speechSynthesis.cancel();
-            stopSpeechBtn.disabled = true;
+            ttsEnabled = !ttsEnabled;
+            localStorage.setItem("sparsha_tts_enabled", String(ttsEnabled));
+            if (!ttsEnabled) window.speechSynthesis.cancel();
+            updateTtsButton();
         });
+        updateTtsButton();
 
         const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
         if (SpeechRecognition) {
@@ -504,13 +517,11 @@
         }
 
         function speakResponse(text, langCode) {
+            if (!ttsEnabled || !text) return;
             window.speechSynthesis.cancel();
             const cleanText = text.replace(/<[^>]*>?/gm, '').replace(/\*/g, '');
             const utterance = new SpeechSynthesisUtterance(cleanText);
             utterance.lang = langCode === 'hi' ? 'hi-IN' : 'en-US';
-            utterance.onstart = () => { stopSpeechBtn.disabled = false; };
-            utterance.onend = () => { stopSpeechBtn.disabled = true; };
-            utterance.onerror = () => { stopSpeechBtn.disabled = true; };
             window.speechSynthesis.speak(utterance);
         }
 
@@ -593,9 +604,8 @@
                                     (parsed.reasoning ? `<span class="reasoning-note">${parsed.reasoning}</span>` : '');
                             } else if (status === "NOT_FOUND") {
                                 aiMsgDiv.classList.add('status-not-found');
-                                aiMsgDiv.innerHTML =
-                                    `<i>I’m sorry you’re experiencing this. I could not verify an explicit classical match for this concern, and I do not want to guess.</i>` +
-                                    (parsed.reasoning ? `<span class="reasoning-note">${parsed.reasoning}</span>` : '');
+                                aiMsgDiv.innerText = parsed.reasoning ||
+                                    "I’m sorry you’re experiencing this. I could not verify an explicit classical match, and I do not want to guess.";
                             } else if (status === "SAFE") {
                                 fullResponse = selectedLang === "hi"
                                     ? "मुझे एक स्पष्ट शास्त्रीय संदर्भ मिला है। कृपया नीचे दिए स्रोत को योग्य BAMS चिकित्सक के साथ सत्यापित करें।\n\n"

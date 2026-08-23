@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import difflib
 import json
 import os
 import re
@@ -291,12 +292,30 @@ def map_english_query(query: str) -> str | None:
     for phrase, devanagari in ENGLISH_TO_DEVANAGARI.items():
         if len(phrase) >= 4 and f" {phrase} " in padded:
             matches.append((len(phrase), devanagari))
-    if not matches:
+    if matches:
+        matches.sort(reverse=True)
+        best_length = matches[0][0]
+        best_terms = {term for length, term in matches if length == best_length}
+        if len(best_terms) == 1:
+            return next(iter(best_terms))
+
+    # Conservative typo tolerance for clinical words: e.g. bloting -> bloating.
+    # Only single-word aliases of at least five letters are considered.
+    aliases = [phrase for phrase in ENGLISH_TO_DEVANAGARI if " " not in phrase and len(phrase) >= 5]
+    stopwords = {"about", "after", "before", "feeling", "having", "please", "there", "today", "yesterday"}
+    fuzzy_hits: list[tuple[float, str]] = []
+    for word in normalized.split():
+        if len(word) < 5 or word in stopwords:
+            continue
+        for alias in difflib.get_close_matches(word, aliases, n=2, cutoff=0.88):
+            score = difflib.SequenceMatcher(None, word, alias).ratio()
+            fuzzy_hits.append((score, ENGLISH_TO_DEVANAGARI[alias]))
+    if not fuzzy_hits:
         return None
-    matches.sort(reverse=True)
-    best_length = matches[0][0]
-    best_terms = {term for length, term in matches if length == best_length}
-    return next(iter(best_terms)) if len(best_terms) == 1 else None
+    fuzzy_hits.sort(reverse=True)
+    top_score = fuzzy_hits[0][0]
+    top_terms = {term for score, term in fuzzy_hits if score == top_score}
+    return next(iter(top_terms)) if len(top_terms) == 1 else None
 
 
 def normalize_query(query: str) -> list[str]:
