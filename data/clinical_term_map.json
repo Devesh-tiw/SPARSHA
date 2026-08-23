@@ -1,0 +1,583 @@
+{
+  "terms": [
+    {
+      "sanskrit_devanagari": "अजीर्ण",
+      "sanskrit_roman": "Ajirna",
+      "english_name": "indigestion",
+      "english_aliases": [
+        "dyspepsia"
+      ],
+      "ambiguity_notes": "Classical digestive category",
+      "verification_status": "PROVISIONAL_TEST_ONLY"
+    },
+    {
+      "sanskrit_devanagari": "अतिसार",
+      "sanskrit_roman": "Atisara",
+      "english_name": "diarrhea",
+      "english_aliases": [
+        "loose stools"
+      ],
+      "ambiguity_notes": "Broad classical category",
+      "verification_status": "PROVISIONAL_TEST_ONLY"
+    },
+    {
+      "sanskrit_devanagari": "अपस्मार",
+      "sanskrit_roman": "Apasmara",
+      "english_name": "seizure / loss-of-consciousness disorder",
+      "english_aliases": [
+        "epilepsy-like disorder",
+        "seizure"
+      ],
+      "ambiguity_notes": "Not automatically equivalent to epilepsy",
+      "verification_status": "PROVISIONAL_TEST_ONLY"
+    },
+    {
+      "sanskrit_devanagari": "अम्लपित्त",
+      "sanskrit_roman": "Amlapitta",
+      "english_name": "acid-peptic / hyperacidity-like disorder",
+      "english_aliases": [
+        "acidity",
+        "acid dyspepsia"
+      ],
+      "ambiguity_notes": "Not a single biomedical diagnosis",
+      "verification_status": "PROVISIONAL_TEST_ONLY"
+    },
+    {
+      "sanskrit_devanagari": "अरुचि",
+      "sanskrit_roman": "Aruchi",
+      "english_name": "loss of appetite / taste",
+      "english_aliases": [
+        "anorexia",
+        "poor appetite"
+      ],
+      "ambiguity_notes": "Not psychiatric anorexia nervosa",
+      "verification_status": "PROVISIONAL_TEST_ONLY"
+    },
+    {
+      "sanskrit_devanagari": "अर्श",
+      "sanskrit_roman": "Arsha",
+      "english_name": "hemorrhoids",
+      "english_aliases": [
+        "piles"
+      ],
+      "ambiguity_notes": "Classical Arsha category",
+      "verification_status": "PROVISIONAL_TEST_ONLY"
+    },
+    {
+      "sanskrit_devanagari": "अश्मरी",
+      "sanskrit_roman": "Ashmari",
+      "english_name": "urinary calculus",
+      "english_aliases": [
+        "urinary stone",
+        "kidney-stone-like disorder"
+      ],
+      "ambiguity_notes": "Anatomical site requires confirmation",
+      "verification_status": "PROVISIONAL_TEST_ONLY"
+    },
+    {
+      "sanskrit_devanagari": "आध्मान",
+      "sanskrit_roman": "Adhmana",
+      "english_name": "abdominal bloating / distension",
+      "english_aliases": [
+        "bloating",
+        "flatulence"
+      ],
+      "ambiguity_notes": "Symptom/category",
+      "verification_status": "PROVISIONAL_TEST_ONLY"
+    },
+    {
+      "sanskrit_devanagari": "आनाह",
+      "sanskrit_roman": "Anaha",
+      "english_name": "obstruction / abdominal distension",
+      "english_aliases": [
+        "constipation",
+        "abdominal obstruction"
+      ],
+      "ambiguity_notes": "Context dependent",
+      "verification_status": "PROVISIONAL_TEST_ONLY"
+    },
+    {
+      "sanskrit_devanagari": "आमवात",
+      "sanskrit_roman": "Amavata",
+      "english_name": "inflammatory arthritis-like disorder",
+      "english_aliases": [
+        "rheumatoid arthritis-like disorder"
+      ],
+      "ambiguity_notes": "Not automatically equivalent to rheumatoid arthritis",
+      "verification_status": "PROVISIONAL_TEST_ONLY"
+    },
+    {
+      "sanskrit_devanagari": "उदर",
+      "sanskrit_roman": "Udara",
+      "english_name": "abdominal disorder group",
+      "english_aliases": [
+        "abdominal disease"
+      ],
+      "ambiguity_notes": "Too broad without subtype",
+      "verification_status": "PROVISIONAL_TEST_ONLY"
+    },
+    {
+      "sanskrit_devanagari": "उन्माद",
+      "sanskrit_roman": "Unmada",
+      "english_name": "severe mental disturbance",
+      "english_aliases": [
+        "psychosis-like disorder",
+        "mental disturbance"
+      ],
+      "ambiguity_notes": "Not a single psychiatric diagnosis",
+      "verification_status": "PROVISIONAL_TEST_ONLY"
+    },
+    {
+      "sanskrit_devanagari": "कण्डू",
+      "sanskrit_roman": "Kandu",
+      "english_name": "itching",
+      "english_aliases": [
+        "pruritus"
+      ],
+      "ambiguity_notes": "Symptom/category",
+      "verification_status": "PROVISIONAL_TEST_ONLY"
+    },
+    {
+      "sanskrit_devanagari": "कामला",
+      "sanskrit_roman": "Kamala",
+      "english_name": "jaundice-like disorder",
+      "english_aliases": [
+        "jaundice"
+      ],
+      "ambiguity_notes": "Classical category; etiology may differ",
+      "verification_status": "PROVISIONAL_TEST_ONLY"
+    },
+    {
+      "sanskrit_devanagari": "कास",
+      "sanskrit_roman": "Kasa",
+      "english_name": "cough",
+      "english_aliases": [
+        "coughing disorder"
+      ],
+      "ambiguity_notes": "Not every cough has the same doshic diagnosis",
+      "verification_status": "PROVISIONAL_TEST_ONLY"
+    },
+    {
+      "sanskrit_devanagari": "कुष्ठ",
+      "sanskrit_roman": "Kushtha",
+      "english_name": "classical skin-disease group",
+      "english_aliases": [
+        "skin disorder",
+        "dermatosis"
+      ],
+      "ambiguity_notes": "Must never be translated automatically as leprosy",
+      "verification_status": "PROVISIONAL_TEST_ONLY"
+    },
+    {
+      "sanskrit_devanagari": "कृमि",
+      "sanskrit_roman": "Krimi",
+      "english_name": "worm / parasitic disorder",
+      "english_aliases": [
+        "intestinal worms",
+        "parasitosis"
+      ],
+      "ambiguity_notes": "May include broader classical concepts",
+      "verification_status": "PROVISIONAL_TEST_ONLY"
+    },
+    {
+      "sanskrit_devanagari": "क्षय",
+      "sanskrit_roman": "Kshaya",
+      "english_name": "wasting / depletion disorder",
+      "english_aliases": [
+        "consumption",
+        "tissue depletion"
+      ],
+      "ambiguity_notes": "Context dependent",
+      "verification_status": "PROVISIONAL_TEST_ONLY"
+    },
+    {
+      "sanskrit_devanagari": "गलघण्ड",
+      "sanskrit_roman": "Galaganda",
+      "english_name": "goiter / neck swelling",
+      "english_aliases": [
+        "goitre",
+        "neck swelling"
+      ],
+      "ambiguity_notes": "Not every neck swelling is thyroid disease",
+      "verification_status": "PROVISIONAL_TEST_ONLY"
+    },
+    {
+      "sanskrit_devanagari": "गुल्म",
+      "sanskrit_roman": "Gulma",
+      "english_name": "abdominal mass/distension syndrome",
+      "english_aliases": [
+        "abdominal lump",
+        "abdominal distension"
+      ],
+      "ambiguity_notes": "Not automatically a tumor",
+      "verification_status": "PROVISIONAL_TEST_ONLY"
+    },
+    {
+      "sanskrit_devanagari": "ग्रहणी",
+      "sanskrit_roman": "Grahani",
+      "english_name": "Grahani disorder / malabsorption syndrome",
+      "english_aliases": [
+        "chronic bowel dysfunction"
+      ],
+      "ambiguity_notes": "Not identical to IBS",
+      "verification_status": "PROVISIONAL_TEST_ONLY"
+    },
+    {
+      "sanskrit_devanagari": "छर्दि",
+      "sanskrit_roman": "Chardi",
+      "english_name": "vomiting",
+      "english_aliases": [
+        "emesis"
+      ],
+      "ambiguity_notes": "Symptom/category",
+      "verification_status": "PROVISIONAL_TEST_ONLY"
+    },
+    {
+      "sanskrit_devanagari": "ज्वर",
+      "sanskrit_roman": "Jvara",
+      "english_name": "fever",
+      "english_aliases": [
+        "pyrexia",
+        "febrile illness"
+      ],
+      "ambiguity_notes": "Broad classical fever category",
+      "verification_status": "PROVISIONAL_TEST_ONLY"
+    },
+    {
+      "sanskrit_devanagari": "तृष्णा",
+      "sanskrit_roman": "Trishna",
+      "english_name": "excessive thirst",
+      "english_aliases": [
+        "thirst",
+        "polydipsia"
+      ],
+      "ambiguity_notes": "Symptom/category",
+      "verification_status": "PROVISIONAL_TEST_ONLY"
+    },
+    {
+      "sanskrit_devanagari": "दाह",
+      "sanskrit_roman": "Daha",
+      "english_name": "burning sensation",
+      "english_aliases": [
+        "burning"
+      ],
+      "ambiguity_notes": "Site must be specified",
+      "verification_status": "PROVISIONAL_TEST_ONLY"
+    },
+    {
+      "sanskrit_devanagari": "नेत्ररोग",
+      "sanskrit_roman": "Netraroga",
+      "english_name": "eye-disease group",
+      "english_aliases": [
+        "eye disorder"
+      ],
+      "ambiguity_notes": "Broad category",
+      "verification_status": "PROVISIONAL_TEST_ONLY"
+    },
+    {
+      "sanskrit_devanagari": "पाण्डु",
+      "sanskrit_roman": "Pandu",
+      "english_name": "anemia-like disorder",
+      "english_aliases": [
+        "pallor disorder"
+      ],
+      "ambiguity_notes": "Not automatically equivalent to laboratory-confirmed anemia",
+      "verification_status": "PROVISIONAL_TEST_ONLY"
+    },
+    {
+      "sanskrit_devanagari": "पीनस",
+      "sanskrit_roman": "Pinasa",
+      "english_name": "chronic nasal/sinus disorder",
+      "english_aliases": [
+        "chronic rhinitis",
+        "sinusitis-like disorder"
+      ],
+      "ambiguity_notes": "Not automatically bacterial sinusitis",
+      "verification_status": "PROVISIONAL_TEST_ONLY"
+    },
+    {
+      "sanskrit_devanagari": "प्रतिश्याय",
+      "sanskrit_roman": "Pratishyaya",
+      "english_name": "rhinitis / nasal catarrh",
+      "english_aliases": [
+        "runny nose",
+        "rhinitis"
+      ],
+      "ambiguity_notes": "Classical category",
+      "verification_status": "PROVISIONAL_TEST_ONLY"
+    },
+    {
+      "sanskrit_devanagari": "प्रमेह",
+      "sanskrit_roman": "Prameha",
+      "english_name": "urinary-metabolic disorder group",
+      "english_aliases": [
+        "polyuria",
+        "metabolic disorder"
+      ],
+      "ambiguity_notes": "Not automatically equivalent to diabetes",
+      "verification_status": "PROVISIONAL_TEST_ONLY"
+    },
+    {
+      "sanskrit_devanagari": "प्रवाहिका",
+      "sanskrit_roman": "Pravahika",
+      "english_name": "dysentery-like disorder",
+      "english_aliases": [
+        "dysentery",
+        "tenesmus"
+      ],
+      "ambiguity_notes": "Not automatically infectious dysentery",
+      "verification_status": "PROVISIONAL_TEST_ONLY"
+    },
+    {
+      "sanskrit_devanagari": "भगन्दर",
+      "sanskrit_roman": "Bhagandara",
+      "english_name": "fistula-in-ano",
+      "english_aliases": [
+        "anal fistula"
+      ],
+      "ambiguity_notes": "Classical category",
+      "verification_status": "PROVISIONAL_TEST_ONLY"
+    },
+    {
+      "sanskrit_devanagari": "भ्रम",
+      "sanskrit_roman": "Bhrama",
+      "english_name": "vertigo / dizziness",
+      "english_aliases": [
+        "dizziness",
+        "vertigo"
+      ],
+      "ambiguity_notes": "Symptom/category",
+      "verification_status": "PROVISIONAL_TEST_ONLY"
+    },
+    {
+      "sanskrit_devanagari": "मधुमेह",
+      "sanskrit_roman": "Madhumeha",
+      "english_name": "diabetes-like Prameha subtype",
+      "english_aliases": [
+        "diabetes mellitus"
+      ],
+      "ambiguity_notes": "Biomedical equivalence requires clinical review",
+      "verification_status": "PROVISIONAL_TEST_ONLY"
+    },
+    {
+      "sanskrit_devanagari": "मन्दाग्नि",
+      "sanskrit_roman": "Mandagni",
+      "english_name": "low digestive capacity",
+      "english_aliases": [
+        "poor digestion",
+        "low appetite"
+      ],
+      "ambiguity_notes": "Ayurvedic functional concept",
+      "verification_status": "PROVISIONAL_TEST_ONLY"
+    },
+    {
+      "sanskrit_devanagari": "मुखरोग",
+      "sanskrit_roman": "Mukharoga",
+      "english_name": "oral-disease group",
+      "english_aliases": [
+        "mouth disorder",
+        "oral disease"
+      ],
+      "ambiguity_notes": "Broad category",
+      "verification_status": "PROVISIONAL_TEST_ONLY"
+    },
+    {
+      "sanskrit_devanagari": "मूत्रकृच्छ्र",
+      "sanskrit_roman": "Mutrakrichhra",
+      "english_name": "dysuria",
+      "english_aliases": [
+        "painful urination"
+      ],
+      "ambiguity_notes": "Symptom/category",
+      "verification_status": "PROVISIONAL_TEST_ONLY"
+    },
+    {
+      "sanskrit_devanagari": "मूर्च्छा",
+      "sanskrit_roman": "Murchha",
+      "english_name": "fainting / syncope-like state",
+      "english_aliases": [
+        "syncope",
+        "fainting"
+      ],
+      "ambiguity_notes": "Urgent biomedical causes must be excluded",
+      "verification_status": "PROVISIONAL_TEST_ONLY"
+    },
+    {
+      "sanskrit_devanagari": "मेहरोग",
+      "sanskrit_roman": "Meharoga",
+      "english_name": "urinary disorder",
+      "english_aliases": [
+        "urinary disease"
+      ],
+      "ambiguity_notes": "Broad category",
+      "verification_status": "PROVISIONAL_TEST_ONLY"
+    },
+    {
+      "sanskrit_devanagari": "रक्तपित्त",
+      "sanskrit_roman": "Raktapitta",
+      "english_name": "classical bleeding disorder",
+      "english_aliases": [
+        "bleeding tendency",
+        "hemorrhagic disorder"
+      ],
+      "ambiguity_notes": "Broad classical category",
+      "verification_status": "PROVISIONAL_TEST_ONLY"
+    },
+    {
+      "sanskrit_devanagari": "राजयक्ष्मा",
+      "sanskrit_roman": "Rajayakshma",
+      "english_name": "consumptive syndrome",
+      "english_aliases": [
+        "tuberculosis-like wasting disorder"
+      ],
+      "ambiguity_notes": "Not automatically microbiologically confirmed tuberculosis",
+      "verification_status": "PROVISIONAL_TEST_ONLY"
+    },
+    {
+      "sanskrit_devanagari": "वातरक्त",
+      "sanskrit_roman": "Vatarakta",
+      "english_name": "gout-like Vata-Rakta disorder",
+      "english_aliases": [
+        "gout"
+      ],
+      "ambiguity_notes": "Not automatically laboratory-confirmed gout",
+      "verification_status": "PROVISIONAL_TEST_ONLY"
+    },
+    {
+      "sanskrit_devanagari": "विद्रधि",
+      "sanskrit_roman": "Vidradhi",
+      "english_name": "abscess-like inflammatory swelling",
+      "english_aliases": [
+        "abscess"
+      ],
+      "ambiguity_notes": "Clinical confirmation required",
+      "verification_status": "PROVISIONAL_TEST_ONLY"
+    },
+    {
+      "sanskrit_devanagari": "विबन्ध",
+      "sanskrit_roman": "Vibandha",
+      "english_name": "constipation / obstruction",
+      "english_aliases": [
+        "constipation"
+      ],
+      "ambiguity_notes": "Context dependent",
+      "verification_status": "PROVISIONAL_TEST_ONLY"
+    },
+    {
+      "sanskrit_devanagari": "विसर्प",
+      "sanskrit_roman": "Visarpa",
+      "english_name": "spreading inflammatory skin disorder",
+      "english_aliases": [
+        "erysipelas-like disorder"
+      ],
+      "ambiguity_notes": "Not automatically equivalent to erysipelas",
+      "verification_status": "PROVISIONAL_TEST_ONLY"
+    },
+    {
+      "sanskrit_devanagari": "व्रण",
+      "sanskrit_roman": "Vrana",
+      "english_name": "wound / ulcer",
+      "english_aliases": [
+        "wound",
+        "ulcer"
+      ],
+      "ambiguity_notes": "Context must distinguish wound and ulcer",
+      "verification_status": "PROVISIONAL_TEST_ONLY"
+    },
+    {
+      "sanskrit_devanagari": "शूल",
+      "sanskrit_roman": "Shula",
+      "english_name": "pain / colic",
+      "english_aliases": [
+        "ache",
+        "colicky pain"
+      ],
+      "ambiguity_notes": "Site must be specified",
+      "verification_status": "PROVISIONAL_TEST_ONLY"
+    },
+    {
+      "sanskrit_devanagari": "शोथ",
+      "sanskrit_roman": "Shotha",
+      "english_name": "swelling / edema",
+      "english_aliases": [
+        "inflammation",
+        "oedema"
+      ],
+      "ambiguity_notes": "Context determines edema versus inflammation",
+      "verification_status": "PROVISIONAL_TEST_ONLY"
+    },
+    {
+      "sanskrit_devanagari": "श्लीपद",
+      "sanskrit_roman": "Shlipada",
+      "english_name": "elephantiasis-like limb swelling",
+      "english_aliases": [
+        "elephantiasis",
+        "lymphedema-like disorder"
+      ],
+      "ambiguity_notes": "Etiology requires confirmation",
+      "verification_status": "PROVISIONAL_TEST_ONLY"
+    },
+    {
+      "sanskrit_devanagari": "श्वास",
+      "sanskrit_roman": "Shvasa",
+      "english_name": "dyspnea / breathing disorder",
+      "english_aliases": [
+        "breathlessness",
+        "asthma-like disorder"
+      ],
+      "ambiguity_notes": "Not identical to asthma in every context",
+      "verification_status": "PROVISIONAL_TEST_ONLY"
+    },
+    {
+      "sanskrit_devanagari": "श्वित्र",
+      "sanskrit_roman": "Shvitra",
+      "english_name": "depigmentation disorder",
+      "english_aliases": [
+        "vitiligo-like disorder"
+      ],
+      "ambiguity_notes": "Clinical confirmation required",
+      "verification_status": "PROVISIONAL_TEST_ONLY"
+    },
+    {
+      "sanskrit_devanagari": "सन्धिवात",
+      "sanskrit_roman": "Sandhivata",
+      "english_name": "degenerative joint disorder",
+      "english_aliases": [
+        "osteoarthritis-like disorder",
+        "joint pain"
+      ],
+      "ambiguity_notes": "Requires site and clinical assessment",
+      "verification_status": "PROVISIONAL_TEST_ONLY"
+    },
+    {
+      "sanskrit_devanagari": "स्थौल्य",
+      "sanskrit_roman": "Sthaulya",
+      "english_name": "obesity / excessive adiposity",
+      "english_aliases": [
+        "obesity"
+      ],
+      "ambiguity_notes": "Clinical assessment required",
+      "verification_status": "PROVISIONAL_TEST_ONLY"
+    },
+    {
+      "sanskrit_devanagari": "हिक्का",
+      "sanskrit_roman": "Hikka",
+      "english_name": "hiccup",
+      "english_aliases": [
+        "hiccups"
+      ],
+      "ambiguity_notes": "Classical category",
+      "verification_status": "PROVISIONAL_TEST_ONLY"
+    },
+    {
+      "sanskrit_devanagari": "हृद्रोग",
+      "sanskrit_roman": "Hridroga",
+      "english_name": "heart-disease group",
+      "english_aliases": [
+        "cardiac disorder"
+      ],
+      "ambiguity_notes": "Broad classical category",
+      "verification_status": "PROVISIONAL_TEST_ONLY"
+    }
+  ]
+}

@@ -1,4 +1,4 @@
-"""SPARSHA FastAPI backend: normalize -> retrieve -> safety verdict -> stream."""
+"""SPARSHA FastAPI backend: fast retrieval -> isolated safety gate -> SSE output."""
 
 from __future__ import annotations
 
@@ -8,54 +8,93 @@ import re
 import threading
 import time
 from collections import defaultdict, deque
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from typing import Any, Iterator, Literal
 
 import chromadb
-import google.generativeai as genai
 from chromadb.utils.embedding_functions import SentenceTransformerEmbeddingFunction
 from dotenv import load_dotenv
-from fastapi import FastAPI, HTTPException, Query, Request
+from fastapi import FastAPI, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
+from google import genai
+from google.genai import types
 from pydantic import BaseModel, Field
 
-load_dotenv()
+ROOT = Path(__file__).resolve().parent
+load_dotenv(ROOT / ".env")
 
-CHROMA_PERSIST_PATH = os.getenv("CHROMA_PERSIST_PATH", "./ayurveda_vector_db")
-CHROMA_COLLECTION = os.getenv("CHROMA_COLLECTION", "sparsha_collection")
+CHROMA_PATH = os.getenv("CHROMA_PERSIST_PATH", str(ROOT / "ayurveda_vector_db"))
+COLLECTION_NAME = os.getenv("CHROMA_COLLECTION", "sparsha_collection")
 EMBEDDING_MODEL = os.getenv("EMBEDDING_MODEL", "all-MiniLM-L6-v2")
-GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.0-flash")
-# Retrieve the complete eligible ranking, then safety-check this many candidates
-# individually to keep Gemini free-tier usage bounded.
-MAX_CLASSIFY_CANDIDATES = max(1, int(os.getenv("MAX_CLASSIFY_CANDIDATES", "12")))
-RETRIEVAL_MAX_DISTANCE = float(os.getenv("RETRIEVAL_MAX_DISTANCE", "1.0"))
-RATE_LIMIT_REQUESTS = max(1, int(os.getenv("RATE_LIMIT_REQUESTS", "12")))
-RATE_LIMIT_WINDOW_SECONDS = max(1, int(os.getenv("RATE_LIMIT_WINDOW_SECONDS", "60")))
-GEMINI_RATE_LIMIT_CALLS = max(1, int(os.getenv("GEMINI_RATE_LIMIT_CALLS", "12")))
+GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
+RETRIEVAL_POOL = max(10, int(os.getenv("RETRIEVAL_POOL", "40")))
+MAX_CLASSIFY_CANDIDATES = max(1, int(os.getenv("MAX_CLASSIFY_CANDIDATES", "5")))
+CLASSIFY_CONCURRENCY = max(1, int(os.getenv("CLASSIFY_CONCURRENCY", "5")))
+MAX_DISTANCE = float(os.getenv("RETRIEVAL_MAX_DISTANCE", "1.0"))
+HTTP_RATE_LIMIT = max(1, int(os.getenv("RATE_LIMIT_REQUESTS", "12")))
+RATE_WINDOW = max(1, int(os.getenv("RATE_LIMIT_WINDOW_SECONDS", "60")))
+GEMINI_RATE_LIMIT = max(1, int(os.getenv("GEMINI_RATE_LIMIT_CALLS", "12")))
 
-# Used in addition to vocabulary discovered from the indexed classical records.
-KNOWN_SANSKRIT_TERMS = {
-    "ajirna", "amavata", "amlapitta", "arsha", "atisara", "chardi", "daha",
-    "grahani", "gulma", "hikka", "jvara", "kamala", "kasa", "krimi",
-    "kushtha", "mutrakrichra", "pandu", "prameha", "rajayakshma", "raktapitta",
-    "shotha", "shula", "svasa", "trishna", "udara", "unmada", "vatarakta",
-    "visarpa", "vrana",
-}
-# Prevent common one-word English queries present in indexed glosses from being
-# mistaken for Roman Sanskrit merely because they occur in the corpus.
-KNOWN_ENGLISH_CLINICAL_TERMS = {
-    "fever", "cough", "headache", "bloating", "bloat", "pain", "diarrhea",
-    "constipation", "vomiting", "nausea", "asthma", "anemia", "jaundice",
-    "diabetes", "wound", "ulcer", "itching", "swelling", "inflammation",
-    "indigestion", "acidity", "fatigue", "weakness", "bleeding",
-}
 DEVANAGARI_RE = re.compile(r"[\u0900-\u097f]")
-IAST_RE = re.compile(r"[āīūṛṝḷṅñṭḍṇśṣṃṁḥ]", re.IGNORECASE)
+IAST_RE = re.compile(r"[āīūṛṝḷṅñṭḍṇśṣṃṁḥ]", re.I)
 TOKEN_RE = re.compile(r"[^\W_]+", re.UNICODE)
+GREETING_RE = re.compile(
+    r"^(?:hi|hello|hey|ok|okay|thanks?|thank you|namaste|नमस्ते)[!. ]*$", re.I
+)
+ROMAN_TO_DEVANAGARI = {
+    "ajirna": "अजीर्ण", "amavata": "आमवात", "amlapitta": "अम्लपित्त",
+    "arsha": "अर्श", "atisara": "अतिसार", "chardi": "छर्दि", "daha": "दाह",
+    "grahani": "ग्रहणी", "gulma": "गुल्म", "hikka": "हिक्का", "jvara": "ज्वर",
+    "kamala": "कामला", "kasa": "कास", "krimi": "कृमि", "kushtha": "कुष्ठ",
+    "mutrakrichra": "मूत्रकृच्छ्र", "pandu": "पाण्डु", "prameha": "प्रमेह",
+    "rajayakshma": "राजयक्ष्मा", "raktapitta": "रक्तपित्त", "shotha": "शोथ",
+    "shula": "शूल", "svasa": "श्वास", "trishna": "तृष्णा", "udara": "उदर",
+    "unmada": "उन्माद", "vatarakta": "वातरक्त", "visarpa": "विसर्प",
+    "vrana": "व्रण",
+    # Common BAMS typing variants (ASCII/non-IAST)
+    "jwara": "ज्वर", "jwar": "ज्वर", "javara": "ज्वर",
+    "shwasa": "श्वास", "shwas": "श्वास", "swasa": "श्वास",
+    "kustha": "कुष्ठ", "kushta": "कुष्ठ", "kushtha": "कुष्ठ",
+    "atisaar": "अतिसार", "atisara": "अतिसार",
+    "mutrakricchra": "मूत्रकृच्छ्र", "mutrakrichhra": "मूत्रकृच्छ्र",
+    "raktapita": "रक्तपित्त", "raktapitta": "रक्तपित्त",
+    "sotha": "शोथ", "shoth": "शोथ", "shotha": "शोथ",
+    "sula": "शूल", "shool": "शूल", "shula": "शूल",
+}
+KNOWN_SANSKRIT = set(ROMAN_TO_DEVANAGARI)
+DETERMINISTIC_OUTPUT = os.getenv("DETERMINISTIC_OUTPUT", "true").lower() in {"1", "true", "yes"}
+POSITIVE_ACTION = re.compile(r"(?:हर|हरी|हृत्|घ्न|नाश|जित्|प्रणुत्|अपह|शमन)")
+DANGER_ACTION = re.compile(r"(?:कर|कृत्|प्रद|वर्धन|कोपन|विदाह|मृत्यु|करोति)")
+TERM_MAP_PATH = ROOT / "data" / "clinical_term_map.json"
 
-app = FastAPI(title="SPARSHA", version="1.0.0")
+
+def load_english_term_map() -> dict[str, str]:
+    mapping: dict[str, str] = {}
+    if not TERM_MAP_PATH.exists():
+        return mapping
+    try:
+        payload = json.loads(TERM_MAP_PATH.read_text(encoding="utf-8"))
+        for entry in payload.get("terms", []):
+            devanagari = str(entry.get("sanskrit_devanagari", "")).strip()
+            if not devanagari:
+                continue
+            names = [entry.get("english_name", ""), entry.get("sanskrit_roman", "")]
+            names.extend(entry.get("english_aliases", []))
+            for name in names:
+                normalized = re.sub(r"[^a-z0-9]+", " ", str(name).casefold()).strip()
+                if normalized:
+                    mapping[normalized] = devanagari
+    except Exception as exc:
+        print(f"[startup] clinical term map could not be loaded: {exc}")
+    return mapping
+
+
+ENGLISH_TO_DEVANAGARI = load_english_term_map()
+
+app = FastAPI(title="SPARSHA", version="2.0-fast")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -65,10 +104,9 @@ app.add_middleware(
 )
 
 
-class SlidingWindowLimiter:
-    def __init__(self, limit: int, window_seconds: int) -> None:
-        self.limit = limit
-        self.window = window_seconds
+class SlidingLimiter:
+    def __init__(self, limit: int, window: int) -> None:
+        self.limit, self.window = limit, window
         self.hits: dict[str, deque[float]] = defaultdict(deque)
         self.lock = threading.Lock()
 
@@ -79,18 +117,14 @@ class SlidingWindowLimiter:
             while bucket and bucket[0] <= now - self.window:
                 bucket.popleft()
             if len(bucket) >= self.limit:
-                retry_after = max(1, int(self.window - (now - bucket[0])) + 1)
-                return False, retry_after
+                return False, max(1, int(self.window - (now - bucket[0])) + 1)
             bucket.append(now)
             return True, 0
 
 
-class BlockingProviderLimiter:
-    """Global limiter for actual Gemini calls, not merely incoming HTTP requests."""
-
-    def __init__(self, limit: int, window_seconds: int = 60) -> None:
-        self.limit = limit
-        self.window = window_seconds
+class ProviderLimiter:
+    def __init__(self, limit: int, window: int = 60) -> None:
+        self.limit, self.window = limit, window
         self.hits: deque[float] = deque()
         self.lock = threading.Lock()
 
@@ -103,38 +137,37 @@ class BlockingProviderLimiter:
                 if len(self.hits) < self.limit:
                     self.hits.append(now)
                     return
-                wait_for = max(0.05, self.window - (now - self.hits[0]) + 0.01)
-            time.sleep(wait_for)
+                delay = max(0.05, self.window - (now - self.hits[0]) + 0.01)
+            time.sleep(delay)
 
 
-limiter = SlidingWindowLimiter(RATE_LIMIT_REQUESTS, RATE_LIMIT_WINDOW_SECONDS)
-gemini_limiter = BlockingProviderLimiter(GEMINI_RATE_LIMIT_CALLS)
+http_limiter = SlidingLimiter(HTTP_RATE_LIMIT, RATE_WINDOW)
+gemini_limiter = ProviderLimiter(GEMINI_RATE_LIMIT)
 
 
 @app.middleware("http")
-async def rate_limit_queries(request: Request, call_next):
-    # Limit only AI query traffic, not the UI and health checks.
-    if request.url.path in {"/api/query", "/query"}:
+async def limit_ai_requests(request: Request, call_next):
+    if request.url.path in {"/ask", "/api/query"}:
         forwarded = request.headers.get("x-forwarded-for", "").split(",")[0].strip()
-        client_ip = forwarded or (request.client.host if request.client else "unknown")
-        allowed, retry_after = limiter.check(client_ip)
+        key = forwarded or (request.client.host if request.client else "unknown")
+        allowed, retry = http_limiter.check(key)
         if not allowed:
             return JSONResponse(
-                status_code=429,
-                content={"detail": "Rate limit exceeded. Please retry shortly."},
-                headers={"Retry-After": str(retry_after)},
+                {"detail": "Rate limit exceeded."}, status_code=429,
+                headers={"Retry-After": str(retry)},
             )
     return await call_next(request)
 
 
-class QueryBody(BaseModel):
-    query: str = Field(min_length=1, max_length=500)
-
-
 class AskRequest(BaseModel):
-    # Kept compatible with the existing frontend contract.
-    symptom: str = Field(min_length=1, max_length=500)
-    language: str = Field(default="en", max_length=10)
+    # Supports both the current SSE frontend and the older UI request name.
+    symptom: str | None = Field(default=None, max_length=500)
+    message: str | None = Field(default=None, max_length=500)
+    language: str = Field(default="sa", max_length=10)
+
+
+class QueryRequest(BaseModel):
+    query: str = Field(min_length=1, max_length=500)
 
 
 class Candidate(BaseModel):
@@ -150,10 +183,29 @@ class Verdict(BaseModel):
     candidate: Candidate | None = None
 
 
-_resource_lock = threading.Lock()
+_resource_lock = threading.RLock()
+_cache_lock = threading.Lock()
 _collection = None
-_model = None
-_index_vocabulary: set[str] | None = None
+_gemini = None
+_eligible_by_id: dict[str, Candidate] = {}
+_normalize_cache: dict[str, list[str]] = {}
+_classify_cache: dict[tuple[str, str], Verdict] = {}
+_answer_cache: dict[str, tuple[str, str, str]] = {}
+
+
+def canonical(text: str) -> str:
+    return re.sub(r"[^a-zāīūṛṝḷṅñṭḍṇśṣṃṁḥ\u0900-\u097f]", "", text.casefold())
+
+
+def extract_json(text: str) -> Any:
+    cleaned = re.sub(r"^```(?:json)?\s*|\s*```$", "", text.strip(), flags=re.I)
+    try:
+        return json.loads(cleaned)
+    except json.JSONDecodeError:
+        match = re.search(r"(\{.*\}|\[.*\])", cleaned, re.S)
+        if not match:
+            raise ValueError("Model returned invalid JSON")
+        return json.loads(match.group(1))
 
 
 def get_collection():
@@ -161,279 +213,412 @@ def get_collection():
     if _collection is None:
         with _resource_lock:
             if _collection is None:
-                client = chromadb.PersistentClient(path=CHROMA_PERSIST_PATH)
-                embedding_function = SentenceTransformerEmbeddingFunction(model_name=EMBEDDING_MODEL)
-                _collection = client.get_collection(
-                    name=CHROMA_COLLECTION,
-                    embedding_function=embedding_function,
-                )
+                client = chromadb.PersistentClient(path=CHROMA_PATH)
+                names = {item.name for item in client.list_collections()}
+                if COLLECTION_NAME not in names:
+                    raise RuntimeError(
+                        f"Collection '{COLLECTION_NAME}' not found. Available: {sorted(names)}"
+                    )
+                embedding = SentenceTransformerEmbeddingFunction(model_name=EMBEDDING_MODEL)
+                _collection = client.get_collection(COLLECTION_NAME, embedding_function=embedding)
     return _collection
 
 
-def get_model():
-    global _model
-    if _model is None:
+def get_gemini():
+    global _gemini
+    if _gemini is None:
         with _resource_lock:
-            if _model is None:
-                api_key = os.getenv("GEMINI_API_KEY", "").strip()
-                if not api_key:
-                    raise RuntimeError("GEMINI_API_KEY is not configured")
-                genai.configure(api_key=api_key)
-                _model = genai.GenerativeModel(GEMINI_MODEL)
-    return _model
+            if _gemini is None:
+                key = os.getenv("GEMINI_API_KEY", "").strip()
+                if not key:
+                    raise RuntimeError("GEMINI_API_KEY is missing from .env")
+                _gemini = genai.Client(api_key=key)
+    return _gemini
 
 
-def canonical_token(text: str) -> str:
-    return re.sub(r"[^a-zāīūṛṝḷṅñṭḍṇśṣṃṁḥ]", "", text.casefold())
+def load_eligible_records() -> None:
+    global _eligible_by_id
+    collection = get_collection()
+    result = collection.get(
+        where={"eligible_for_recommendation": True},
+        include=["documents", "metadatas"],
+    )
+    loaded: dict[str, Candidate] = {}
+    for doc_id, doc, meta in zip(
+        result.get("ids", []), result.get("documents", []), result.get("metadatas", [])
+    ):
+        loaded[doc_id] = Candidate(
+            doc_id=doc_id, distance=999.0, document=doc or "", metadata=meta or {}
+        )
+    _eligible_by_id = loaded
 
 
-def get_index_vocabulary() -> set[str]:
-    """Build a local vocabulary once so Roman Sanskrit already in the DB is not expanded."""
-    global _index_vocabulary
-    if _index_vocabulary is None:
-        with _resource_lock:
-            if _index_vocabulary is None:
-                result = get_collection().get(include=["documents"])
-                vocabulary: set[str] = set(KNOWN_SANSKRIT_TERMS)
-                for document in result.get("documents") or []:
-                    for token in TOKEN_RE.findall(document or ""):
-                        normalized = canonical_token(token)
-                        if normalized:
-                            vocabulary.add(normalized)
-                _index_vocabulary = vocabulary
-    return _index_vocabulary
+@app.on_event("startup")
+def warm_start() -> None:
+    """Pay model/database loading cost at startup, not on the first question."""
+    started = time.perf_counter()
+    load_eligible_records()
+    get_gemini()
+    print(
+        f"[startup] {len(_eligible_by_id)} eligible records loaded in "
+        f"{time.perf_counter() - started:.2f}s"
+    )
 
 
 def is_sanskrit_query(query: str) -> bool:
-    value = query.strip()
-    if DEVANAGARI_RE.search(value) or IAST_RE.search(value):
+    if DEVANAGARI_RE.search(query) or IAST_RE.search(query):
         return True
-    tokens = [canonical_token(token) for token in TOKEN_RE.findall(value)]
-    tokens = [token for token in tokens if token]
-    if not tokens or len(tokens) > 3:
-        return False
-    if any(token in KNOWN_ENGLISH_CLINICAL_TERMS for token in tokens):
-        return False
-    vocabulary = get_index_vocabulary()
-    return all(token in vocabulary for token in tokens)
+    tokens = [canonical(token) for token in TOKEN_RE.findall(query)]
+    return bool(tokens) and len(tokens) <= 3 and all(token in KNOWN_SANSKRIT for token in tokens)
 
 
-def extract_json(text: str) -> Any:
-    cleaned = text.strip()
-    cleaned = re.sub(r"^```(?:json)?\s*|\s*```$", "", cleaned, flags=re.IGNORECASE)
-    try:
-        return json.loads(cleaned)
-    except json.JSONDecodeError:
-        match = re.search(r"(\{.*\}|\[.*\])", cleaned, flags=re.DOTALL)
-        if not match:
-            raise ValueError("Gemini did not return valid JSON")
-        return json.loads(match.group(1))
+def map_english_query(query: str) -> str | None:
+    normalized = re.sub(r"[^a-z0-9]+", " ", query.casefold()).strip()
+    exact = ENGLISH_TO_DEVANAGARI.get(normalized)
+    if exact:
+        return exact
+    # Longest phrase wins, so "heart disease" is preferred over "disease".
+    matches: list[tuple[int, str]] = []
+    padded = f" {normalized} "
+    for phrase, devanagari in ENGLISH_TO_DEVANAGARI.items():
+        if len(phrase) >= 4 and f" {phrase} " in padded:
+            matches.append((len(phrase), devanagari))
+    if not matches:
+        return None
+    matches.sort(reverse=True)
+    best_length = matches[0][0]
+    best_terms = {term for length, term in matches if length == best_length}
+    return next(iter(best_terms)) if len(best_terms) == 1 else None
 
 
 def normalize_query(query: str) -> list[str]:
-    """Return the raw classical term unchanged; expand likely English only."""
     raw = query.strip()
     if is_sanskrit_query(raw):
-        return [raw]
+        mapped = ROMAN_TO_DEVANAGARI.get(canonical(raw))
+        return [raw, mapped] if mapped and mapped != raw else [raw]
+    verified_local = map_english_query(raw)
+    if verified_local:
+        return [raw, verified_local]
+    cache_key = raw.casefold()
+    with _cache_lock:
+        if cache_key in _normalize_cache:
+            return _normalize_cache[cache_key]
 
-    prompt = f"""You normalize an English clinical query for retrieval from an Ayurvedic
-Nighantu corpus. Return ONLY a JSON array of 3 to 8 short search terms. Include the
-original key English symptom/disease and likely classical Sanskrit equivalents in
-Devanagari and/or standard Roman transliteration. Do not diagnose, prescribe, or
-add herbs. Keep terms precise rather than broad.
-
+    prompt = f"""Normalize this English clinical query for retrieval from an Ayurvedic
+Sanskrit Nighantu. Return ONLY a JSON array with the original key term and up to
+five confident classical Sanskrit equivalents. Do not diagnose, prescribe, name
+herbs, or guess uncertain equivalents.
 Query: {raw}"""
     gemini_limiter.acquire()
-    response = get_model().generate_content(
-        prompt,
-        generation_config={"temperature": 0.0, "response_mime_type": "application/json"},
+    response = get_gemini().models.generate_content(
+        model=GEMINI_MODEL,
+        contents=prompt,
+        config=types.GenerateContentConfig(
+            temperature=0.0, response_mime_type="application/json"
+        ),
     )
-    parsed = extract_json(response.text)
+    parsed = extract_json(response.text or "[]")
     if isinstance(parsed, dict):
         parsed = parsed.get("terms", [])
-    terms = [str(term).strip() for term in parsed if str(term).strip()] if isinstance(parsed, list) else []
-    # Keep order, include raw query, and avoid an uncontrolled term explosion.
-    return list(dict.fromkeys([raw, *terms]))[:8]
+    terms = [raw]
+    if isinstance(parsed, list):
+        terms.extend(str(item).strip() for item in parsed if str(item).strip())
+    terms = list(dict.fromkeys(terms))[:6]
+    with _cache_lock:
+        _normalize_cache[cache_key] = terms
+    return terms
 
 
-def retrieve_candidates(terms: list[str]) -> list[Candidate]:
-    """Query every term separately, merge by document ID, and retain min distance."""
+def retrieve_candidates(terms: list[str], raw_query: str) -> list[Candidate]:
     collection = get_collection()
-    eligible = collection.get(
-        where={"eligible_for_recommendation": True}, include=[]
-    ).get("ids", [])
-    count = len(eligible)
-    if count == 0:
+    if not _eligible_by_id:
         return []
-
     merged: dict[str, Candidate] = {}
+    pool_size = min(RETRIEVAL_POOL, len(_eligible_by_id))
+
     for term in terms:
         result = collection.query(
-            query_texts=[term],
-            n_results=count,  # Full eligible ranked list; safety gate decides where to stop.
+            query_texts=[term], n_results=pool_size,
             where={"eligible_for_recommendation": True},
             include=["documents", "metadatas", "distances"],
         )
-        ids = (result.get("ids") or [[]])[0]
-        documents = (result.get("documents") or [[]])[0]
-        metadatas = (result.get("metadatas") or [[]])[0]
-        distances = (result.get("distances") or [[]])[0]
-        for doc_id, document, metadata, distance in zip(ids, documents, metadatas, distances):
-            distance_value = float(distance)
-            if distance_value > RETRIEVAL_MAX_DISTANCE:
+        for doc_id, doc, meta, distance in zip(
+            (result.get("ids") or [[]])[0],
+            (result.get("documents") or [[]])[0],
+            (result.get("metadatas") or [[]])[0],
+            (result.get("distances") or [[]])[0],
+        ):
+            dist = float(distance)
+            if dist > MAX_DISTANCE:
                 continue
-            current = merged.get(doc_id)
-            if current is None or distance_value < current.distance:
+            old = merged.get(doc_id)
+            if old is None or dist < old.distance:
                 merged[doc_id] = Candidate(
-                    doc_id=doc_id,
-                    distance=distance_value,
-                    document=document or "",
-                    metadata=metadata or {},
+                    doc_id=doc_id, distance=dist, document=doc or "", metadata=meta or {}
                 )
+
+    # Exact source-text matches are deterministic, nearly free, and improve recall.
+    needles = {term.strip().casefold() for term in [raw_query, *terms] if len(term.strip()) >= 2}
+    for doc_id, item in _eligible_by_id.items():
+        if any(needle in item.document.casefold() for needle in needles):
+            exact = item.model_copy(update={"distance": -1.0})
+            local = local_explicit_verdict(raw_query, exact)
+            if local and local.status == "SAFE":
+                exact = exact.model_copy(update={"distance": -3.0})
+            elif local and local.status == "DANGER":
+                exact = exact.model_copy(update={"distance": -2.0})
+            merged[doc_id] = exact
+
     return sorted(merged.values(), key=lambda item: item.distance)
 
 
-def classify(query: str, candidate: Candidate) -> Verdict:
-    prompt = f"""You are a conservative evidence gate for BAMS-qualified Ayurvedic
-consultants. Assess ONE retrieved herb record against the consultant's query.
-Use only the supplied record, especially raw_karma_sanskrit and classical_properties.
+def local_explicit_verdict(query: str, candidate: Candidate) -> Verdict | None:
+    """Zero-LLM verdict only when Karma contains an explicit nearby action."""
+    match = re.search(
+        r"Raw karma Sanskrit:\s*(.*?)(?:\nEnglish disease:|\Z)",
+        candidate.document,
+        flags=re.S | re.I,
+    )
+    karma = match.group(1).strip() if match else ""
+    if not karma:
+        return None
+    raw = query.strip()
+    mapped = ROMAN_TO_DEVANAGARI.get(canonical(raw)) or map_english_query(raw)
+    terms = [term for term in (raw if DEVANAGARI_RE.search(raw) else "", mapped) if term]
+    if not terms:
+        return None
 
-Return ONLY JSON with keys status and reasoning.
-- SAFE: the record explicitly supports use for the queried disease/condition.
-- DANGER: the record explicitly states harm, aggravation, contraindication, or a
-  clearly conflicting action for that condition.
-- NOT_FOUND: evidence is absent, ambiguous, merely a synonym match, or requires
-  unsupported inference.
-Never infer missing facts. Do not turn an uncertain match into SAFE.
+    found_positive = False
+    found_danger = False
+    for term in terms:
+        for occurrence in re.finditer(re.escape(term), karma, flags=re.I):
+            # Sanskrit Karma compounds normally put hara/ghna/kara directly after
+            # the disease. A short window avoids borrowing an action from another disease.
+            window = karma[occurrence.start() : occurrence.end() + 18]
+            found_positive |= bool(POSITIVE_ACTION.search(window))
+            found_danger |= bool(DANGER_ACTION.search(window))
+    if found_positive and not found_danger:
+        return Verdict(
+            status="SAFE",
+            reasoning="Raw Karma contains an explicit nearby disease-removing action.",
+            candidate=candidate,
+        )
+    if found_danger and not found_positive:
+        return Verdict(
+            status="DANGER",
+            reasoning="Raw Karma contains an explicit nearby aggravating/causative action.",
+            candidate=candidate,
+        )
+    return None
 
-Consultant query: {query}
-Retrieved record:
+
+def classify_one(query: str, candidate: Candidate) -> Verdict:
+    key = (canonical(query), candidate.doc_id)
+    with _cache_lock:
+        cached = _classify_cache.get(key)
+    if cached:
+        return cached
+
+    prompt = f"""You are a strict evidence gate for qualified BAMS consultants.
+Evaluate ONLY this one record against the query. Return ONLY JSON with status and
+reasoning.
+SAFE = raw Karma/classical text explicitly indicates the queried condition.
+DANGER = the record explicitly causes, aggravates, contraindicates, poisons, or
+requires purification relevant to the query.
+NOT_FOUND = absent, ambiguous, indirect, or inferred evidence.
+Never infer missing facts and never classify a mere semantic similarity as SAFE.
+
+Query: {query}
+Record ID: {candidate.doc_id}
+Record:
 {candidate.document}"""
     gemini_limiter.acquire()
-    response = get_model().generate_content(
-        prompt,
-        generation_config={"temperature": 0.0, "response_mime_type": "application/json"},
+    response = get_gemini().models.generate_content(
+        model=GEMINI_MODEL,
+        contents=prompt,
+        config=types.GenerateContentConfig(
+            temperature=0.0, response_mime_type="application/json"
+        ),
     )
-    parsed = extract_json(response.text)
+    parsed = extract_json(response.text or "{}")
     status = str(parsed.get("status", "NOT_FOUND")).upper()
     if status not in {"SAFE", "DANGER", "NOT_FOUND"}:
         status = "NOT_FOUND"
-    reasoning = str(parsed.get("reasoning", "No explicit supporting evidence found.")).strip()
-    return Verdict(status=status, reasoning=reasoning, candidate=candidate)
-
-
-def find_verdict(query: str, candidates: list[Candidate]) -> Verdict:
-    """Classify one record at a time; first SAFE wins, otherwise surface DANGER."""
-    first_danger: Verdict | None = None
-    candidates_to_check = (
-        candidates[:MAX_CLASSIFY_CANDIDATES] if MAX_CLASSIFY_CANDIDATES else candidates
+    verdict = Verdict(
+        status=status,
+        reasoning=str(parsed.get("reasoning", "No explicit evidence found.")).strip(),
+        candidate=candidate,
     )
-    for candidate in candidates_to_check:
-        verdict = classify(query, candidate)
+    with _cache_lock:
+        _classify_cache[key] = verdict
+    return verdict
+
+
+def find_verdict_fast(query: str, candidates: list[Candidate]) -> Verdict:
+    """Use strict local evidence first; parallel isolated LLM checks only if needed."""
+    selected = candidates[:MAX_CLASSIFY_CANDIDATES]
+    if not selected:
+        return Verdict(status="NOT_FOUND", reasoning="No eligible record was retrieved.")
+
+    results: dict[str, Verdict] = {}
+    unresolved: list[Candidate] = []
+    for item in selected:
+        local = local_explicit_verdict(query, item)
+        if local:
+            results[item.doc_id] = local
+        else:
+            unresolved.append(item)
+
+    # An explicit local SAFE is stronger and faster than an embedding-only ambiguity.
+    for item in selected:
+        verdict = results.get(item.doc_id)
+        if verdict and verdict.status == "SAFE":
+            return verdict
+
+    if unresolved:
+        workers = min(CLASSIFY_CONCURRENCY, len(unresolved))
+        with ThreadPoolExecutor(max_workers=workers, thread_name_prefix="safety") as executor:
+            futures = {executor.submit(classify_one, query, item): item for item in unresolved}
+            for future in as_completed(futures):
+                item = futures[future]
+                try:
+                    results[item.doc_id] = future.result()
+                except Exception as exc:
+                    print(f"[classify] {item.doc_id} failed: {exc}")
+
+    first_danger: Verdict | None = None
+    for item in selected:  # deterministic distance order, not completion order
+        verdict = results.get(item.doc_id)
+        if not verdict:
+            continue
         if verdict.status == "SAFE":
             return verdict
         if verdict.status == "DANGER" and first_danger is None:
             first_danger = verdict
-    if first_danger is not None:
+    if first_danger:
         return first_danger
     return Verdict(
         status="NOT_FOUND",
-        reasoning=(
-            "No retrieved record contained explicit support for this query within "
-            f"the {len(candidates_to_check)} candidate(s) safety-checked."
-        ),
+        reasoning=f"No explicit indication was verified in {len(selected)} safety-checked records.",
     )
+
+
+def generate_grounded(query: str, candidate: Candidate) -> str:
+    if DETERMINISTIC_OUTPUT:
+        # The ingested document is already schema-formatted. Returning it directly
+        # is faster and more faithful than asking an LLM to rewrite classical data.
+        return candidate.document
+    prompt = f"""Present this already-verified record concisely for a qualified BAMS
+consultant. Use ONLY the record. Preserve Sanskrit exactly. Include Sanskrit name,
+Varga, Rasa, Guna, Virya, Vipaka, Karma, source text, and verse ID when present.
+Do not invent English names, botanical identity, dosage, formulation, or treatment.
+Do not use markdown asterisks.
+
+Query: {query}
+Verified record:
+{candidate.document}"""
+    gemini_limiter.acquire()
+    response = get_gemini().models.generate_content(
+        model=GEMINI_MODEL,
+        contents=prompt,
+        config=types.GenerateContentConfig(temperature=0.0),
+    )
+    return (response.text or "").strip()
 
 
 def sse(payload: dict[str, Any]) -> str:
     return "data: " + json.dumps(payload, ensure_ascii=False) + "\n\n"
 
 
-def sse_done() -> str:
+def done_event() -> str:
     return "data: [DONE]\n\n"
 
 
-def stream_safe_record(query: str, verdict: Verdict) -> Iterator[str]:
-    yield sse({"status": verdict.status, "reasoning": verdict.reasoning})
-    if verdict.status != "SAFE" or verdict.candidate is None:
-        yield sse_done()
+def query_events(query: str) -> Iterator[str]:
+    started = time.perf_counter()
+    cache_key = query.strip().casefold()
+    with _cache_lock:
+        cached = _answer_cache.get(cache_key)
+    if cached:
+        status, reasoning, text = cached
+        yield sse({"status": status, "reasoning": reasoning, "cached": True})
+        if status == "SAFE" and text:
+            yield sse({"text": text})
+        yield done_event()
         return
 
-    candidate = verdict.candidate
-    prompt = f"""For a BAMS-qualified consultant, present the selected herb's classical
-properties from the supplied record. Stay strictly grounded in the record. Preserve
-Sanskrit exactly; do not invent translations, dosage, formulations, indications,
-contraindications, botanical identity, or English names. Clearly identify the herb,
-source text, verse IDs, classical properties, and raw karma when available. Mention
-that english_guess is non-authoritative if you include it.
+    if GREETING_RE.fullmatch(query.strip()):
+        reasoning = "Enter a classical Sanskrit disease term; greetings are not clinical queries."
+        yield sse({"status": "NOT_FOUND", "reasoning": reasoning})
+        yield done_event()
+        return
 
-Consultant query: {query}
-Verified record:
-{candidate.document}"""
-    gemini_limiter.acquire()
-    response = get_model().generate_content(
-        prompt,
-        generation_config={"temperature": 0.1},
-        stream=True,
-    )
-    for chunk in response:
-        text = getattr(chunk, "text", "")
-        if text:
-            yield sse({"text": text})
-    yield sse_done()
-
-
-def query_events(query: str) -> Iterator[str]:
     try:
         terms = normalize_query(query)
-        candidates = retrieve_candidates(terms)
-        verdict = find_verdict(query, candidates) if candidates else Verdict(
-            status="NOT_FOUND", reasoning="The vector database returned no candidate records."
-        )
-        yield from stream_safe_record(query, verdict)
+        candidates = retrieve_candidates(terms, query)
+        verdict = find_verdict_fast(query, candidates)
+        text = ""
+        if verdict.status == "SAFE" and verdict.candidate:
+            text = generate_grounded(query, verdict.candidate)
+        with _cache_lock:
+            _answer_cache[cache_key] = (verdict.status, verdict.reasoning, text)
+        yield sse({
+            "status": verdict.status,
+            "reasoning": verdict.reasoning,
+            "latency_seconds": round(time.perf_counter() - started, 3),
+        })
+        if verdict.status == "SAFE" and text:
+            yield sse({"text": text})
     except Exception as exc:
-        yield sse({"status": "NOT_FOUND", "reasoning": f"Backend error: {exc}"})
-        yield sse_done()
+        print(f"[query] failed: {exc}")
+        yield sse({
+            "status": "NOT_FOUND",
+            "reasoning": "The backend could not complete a verified lookup. Check server logs.",
+        })
+    yield done_event()
 
 
 @app.get("/health")
 def health() -> dict[str, Any]:
-    try:
-        count = get_collection().count()
-        return {"status": "ok", "collection": CHROMA_COLLECTION, "documents": count}
-    except Exception as exc:
-        return {"status": "degraded", "error": str(exc)}
+    return {
+        "status": "ok",
+        "collection": COLLECTION_NAME,
+        "total_records": get_collection().count(),
+        "eligible_records": len(_eligible_by_id),
+        "gemini_model": GEMINI_MODEL,
+    }
+
+
+@app.post("/ask")
+def ask(body: AskRequest) -> StreamingResponse:
+    text = (body.symptom or body.message or "").strip()
+    if not text:
+        return StreamingResponse(
+            iter([sse({"status": "NOT_FOUND", "reasoning": "Query is empty."}), done_event()]),
+            media_type="text/event-stream",
+        )
+    return StreamingResponse(
+        query_events(text), media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
 
 
 @app.post("/api/query")
-def query_post(body: QueryBody) -> StreamingResponse:
+def query_post(body: QueryRequest) -> StreamingResponse:
     return StreamingResponse(
-        query_events(body.query.strip()),
-        media_type="text/event-stream",
+        query_events(body.query.strip()), media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )
 
 
 @app.get("/api/query")
 def query_get(q: str = Query(min_length=1, max_length=500)) -> StreamingResponse:
-    # GET support keeps native EventSource frontends compatible.
     return StreamingResponse(
-        query_events(q.strip()),
-        media_type="text/event-stream",
+        query_events(q.strip()), media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )
 
 
-@app.post("/ask")
-def ask(body: AskRequest) -> StreamingResponse:
-    """Compatibility endpoint used by the supplied frontend."""
-    return StreamingResponse(
-        query_events(body.symptom.strip()),
-        media_type="text/event-stream",
-        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
-    )
-
-
-frontend_dir = Path(__file__).resolve().parent / "frontend"
-if frontend_dir.is_dir():
-    app.mount("/", StaticFiles(directory=frontend_dir, html=True), name="frontend")
+frontend = ROOT / "frontend"
+if frontend.is_dir():
+    app.mount("/", StaticFiles(directory=frontend, html=True), name="frontend")
