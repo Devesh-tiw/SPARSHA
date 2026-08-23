@@ -45,6 +45,11 @@ GREETING_RE = re.compile(
     r"^(?:hi|hello|hey|ok|okay|thanks?|thank you|namaste|good morning|good evening|"
     r"how are you|नमस्ते|नमस्कार|हेलो|कैसे हो)[?!. ]*$", re.I
 )
+CASUAL_SUPPORT_RE = re.compile(
+    r"(?:^ya+r+$|\bbro\b|\bfriend\b|not feeling (?:good|well)|feeling (?:bad|low|sad|upset)|"
+    r"i feel (?:bad|low|sad|unwell)|please help|मुझे अच्छा नहीं लग रहा|मन ठीक नहीं|यार)",
+    re.I,
+)
 ROMAN_TO_DEVANAGARI = {
     "ajirna": "अजीर्ण", "amavata": "आमवात", "amlapitta": "अम्लपित्त",
     "arsha": "अर्श", "atisara": "अतिसार", "chardi": "छर्दि", "daha": "दाह",
@@ -542,21 +547,52 @@ def done_event() -> str:
     return "data: [DONE]\n\n"
 
 
-def query_events(query: str) -> Iterator[str]:
+def friendly_followup(query: str, language: str) -> str:
+    """One warm intake response; never diagnose or recommend treatment."""
+    wants_hindi = language == "hi" or bool(DEVANAGARI_RE.search(query))
+    fallback = (
+        "मैं आपके साथ हूँ। कृपया आराम से बताइए—आपको सबसे अधिक क्या परेशानी हो रही है, "
+        "यह कब शुरू हुई, और क्या दर्द, बुखार, खाँसी, साँस की परेशानी या कोई अन्य लक्षण है?"
+        if wants_hindi else
+        "I’m here with you. Please take your time—what is troubling you most, when did it "
+        "start, and are you having pain, fever, cough, breathing difficulty, or another symptom?"
+    )
+    prompt = f"""You are SPARSHA's warm clinical-intake assistant. Respond with genuine empathy
+without claiming to be a doctor. Do not diagnose, prescribe, name a remedy, or make promises.
+Ask one short, natural follow-up question that helps the person describe the main symptom,
+when it began, severity, and urgent warning signs. If they mention severe chest pain,
+difficulty breathing, fainting, stroke signs, heavy bleeding, or self-harm, advise urgent
+medical help. Respond entirely in {'Hindi' if wants_hindi else 'English'}.
+User: {query}"""
+    try:
+        gemini_limiter.acquire()
+        response = get_gemini().models.generate_content(
+            model=GEMINI_MODEL,
+            contents=prompt,
+            config=types.GenerateContentConfig(temperature=0.4, max_output_tokens=120),
+        )
+        text = (response.text or "").strip()
+        return text or fallback
+    except Exception as exc:
+        print(f"[chat] Gemini follow-up failed; using safe fallback: {exc}")
+        return fallback
+
+
+def query_events(query: str, language: str = "en") -> Iterator[str]:
     started = time.perf_counter()
-    cache_key = query.strip().casefold()
+    cache_key = f"{language}:{query.strip().casefold()}"
     with _cache_lock:
         cached = _answer_cache.get(cache_key)
     if cached:
         status, reasoning, text = cached
         yield sse({"status": status, "reasoning": reasoning, "cached": True})
-        if status == "SAFE" and text:
+        if status in {"SAFE", "CHAT"} and text:
             yield sse({"text": text})
         yield done_event()
         return
 
     if GREETING_RE.fullmatch(query.strip()):
-        hindi = bool(DEVANAGARI_RE.search(query))
+        hindi = language == "hi" or bool(DEVANAGARI_RE.search(query))
         message = (
             "नमस्ते! मैं आपकी बात ध्यान से सुनने के लिए यहाँ हूँ। आज आप कैसा महसूस कर रहे हैं? "
             "अपनी परेशानी आराम से बताइए; मैं उपलब्ध शास्त्रीय संदर्भ सावधानी से जाँचूँगा।"
@@ -565,6 +601,20 @@ def query_events(query: str) -> Iterator[str]:
             "your concern in your own words, and I’ll carefully check the available classical references."
         )
         yield sse({"status": "CHAT", "reasoning": "Friendly non-clinical conversation."})
+        yield sse({"text": message})
+        yield done_event()
+        return
+
+    # Vague distress needs a caring follow-up, not a failed herb search.
+    if (
+        CASUAL_SUPPORT_RE.search(query)
+        and not is_sanskrit_query(query)
+        and map_english_query(query) is None
+    ):
+        message = friendly_followup(query, language)
+        with _cache_lock:
+            _answer_cache[cache_key] = ("CHAT", "Supportive clinical-intake follow-up.", message)
+        yield sse({"status": "CHAT", "reasoning": "Supportive clinical-intake follow-up."})
         yield sse({"text": message})
         yield done_event()
         return
@@ -614,7 +664,7 @@ def ask(body: AskRequest) -> StreamingResponse:
             media_type="text/event-stream",
         )
     return StreamingResponse(
-        query_events(text), media_type="text/event-stream",
+        query_events(text, body.language), media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )
 
