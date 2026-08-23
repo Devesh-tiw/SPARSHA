@@ -8,7 +8,6 @@ import os
 import re
 from pathlib import Path
 from typing import Iterable
-
 import chromadb
 from chromadb.utils.embedding_functions import SentenceTransformerEmbeddingFunction
 from dotenv import load_dotenv
