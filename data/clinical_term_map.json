@@ -311,10 +311,12 @@
       "sanskrit_roman": "Prameha",
       "english_name": "urinary-metabolic disorder group",
       "english_aliases": [
+        "diabetes",
+        "high blood sugar",
         "polyuria",
         "metabolic disorder"
       ],
-      "ambiguity_notes": "Not automatically equivalent to diabetes",
+      "ambiguity_notes": "Diabetes is routed here only as a provisional broad retrieval term; not a one-to-one diagnosis",
       "verification_status": "PROVISIONAL_TEST_ONLY"
     },
     {
@@ -482,6 +484,19 @@
         "ulcer"
       ],
       "ambiguity_notes": "Context must distinguish wound and ulcer",
+      "verification_status": "PROVISIONAL_TEST_ONLY"
+    },
+    {
+      "sanskrit_devanagari": "शिरःशूल",
+      "sanskrit_roman": "Shirashula",
+      "english_name": "headache / head pain",
+      "english_aliases": [
+        "headache",
+        "head pain",
+        "pain in head",
+        "migraine-like headache"
+      ],
+      "ambiguity_notes": "Headache has many causes; this is a provisional retrieval label, not a migraine diagnosis",
       "verification_status": "PROVISIONAL_TEST_ONLY"
     },
     {

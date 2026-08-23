@@ -390,6 +390,23 @@
             border-color: var(--danger);
         }
 
+        #stop-speech-btn {
+            background-color: var(--card);
+            color: var(--danger);
+            border: 1px solid var(--rule);
+            border-radius: 50%;
+            width: 46px;
+            height: 46px;
+            padding: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 16px;
+            flex-shrink: 0;
+        }
+
+        #stop-speech-btn:disabled { opacity: 0.45; cursor: not-allowed; }
+
         #mic-btn.recording {
             background-color: var(--danger);
             color: white;
@@ -432,14 +449,14 @@
         </div>
 
         <div class="chat-box" id="chatBox" aria-live="polite">
-            <div class="message ai-msg">Namaste! Tell me your symptoms, and I'll check the classical texts for a
-                verified remedy.</div>
+            <div class="message ai-msg">Namaste! I’m glad you’re here. How are you feeling today? Tell me your concern in your own words, and I’ll carefully check the available classical references.</div>
         </div>
 
         <div class="input-container">
             <input type="text" id="user-input" placeholder="Type your symptoms here..."
                 onkeypress="handleKeyPress(event)" aria-label="Describe your symptoms">
             <button id="mic-btn" aria-label="Speak your symptoms" title="Speak your symptoms">🎙️</button>
+            <button id="stop-speech-btn" aria-label="Stop speaking" title="Stop speaking" disabled>⏹</button>
             <button id="ask-btn">Ask</button>
         </div>
     </div>
@@ -449,9 +466,14 @@
         const userInput = document.getElementById("user-input");
         const askBtn = document.getElementById("ask-btn");
         const micBtn = document.getElementById("mic-btn");
+        const stopSpeechBtn = document.getElementById("stop-speech-btn");
 
         function handleKeyPress(e) { if (e.key === 'Enter') sendMessage(); }
         askBtn.addEventListener('click', sendMessage);
+        stopSpeechBtn.addEventListener('click', () => {
+            window.speechSynthesis.cancel();
+            stopSpeechBtn.disabled = true;
+        });
 
         const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
         if (SpeechRecognition) {
@@ -486,6 +508,9 @@
             const cleanText = text.replace(/<[^>]*>?/gm, '').replace(/\*/g, '');
             const utterance = new SpeechSynthesisUtterance(cleanText);
             utterance.lang = langCode === 'hi' ? 'hi-IN' : 'en-US';
+            utterance.onstart = () => { stopSpeechBtn.disabled = false; };
+            utterance.onend = () => { stopSpeechBtn.disabled = true; };
+            utterance.onerror = () => { stopSpeechBtn.disabled = true; };
             window.speechSynthesis.speak(utterance);
         }
 
@@ -517,7 +542,7 @@
             let status = null;
 
             try {
-                const response = await fetch('http://127.0.0.1:8000/ask', {
+                const response = await fetch('/ask', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ symptom: text, language: selectedLang })
@@ -542,7 +567,7 @@
                         if (content === '[DONE]') {
                             askBtn.disabled = false;
                             askBtn.innerText = "Ask";
-                            if (status === "SAFE") speakResponse(fullResponse, selectedLang);
+                            if ((status === "SAFE" || status === "CHAT") && fullResponse) speakResponse(fullResponse, selectedLang);
                             return;
                         }
 
@@ -564,14 +589,19 @@
                                 aiMsgDiv.classList.add('status-danger');
                                 aiMsgDiv.innerHTML =
                                     `<div class="alert-title">🛑 Safety Alert</div>` +
-                                    `The classical texts indicate this substance causes or aggravates your condition.` +
+                                    `I’m glad you checked first. The available classical record indicates a possible safety concern or aggravating action for this condition.` +
                                     (parsed.reasoning ? `<span class="reasoning-note">${parsed.reasoning}</span>` : '');
                             } else if (status === "NOT_FOUND") {
                                 aiMsgDiv.classList.add('status-not-found');
                                 aiMsgDiv.innerHTML =
-                                    `<i>No explicit classical remedy was found in the database for this specific symptom.</i>` +
+                                    `<i>I’m sorry you’re experiencing this. I could not verify an explicit classical match for this concern, and I do not want to guess.</i>` +
                                     (parsed.reasoning ? `<span class="reasoning-note">${parsed.reasoning}</span>` : '');
                             } else if (status === "SAFE") {
+                                fullResponse = selectedLang === "hi"
+                                    ? "मुझे एक स्पष्ट शास्त्रीय संदर्भ मिला है। कृपया नीचे दिए स्रोत को योग्य BAMS चिकित्सक के साथ सत्यापित करें।\n\n"
+                                    : "I found an explicit classical reference. I hope this helps your discussion with a qualified BAMS physician. Please review the cited source below.\n\n";
+                                aiMsgDiv.innerHTML = formatMarkdown(fullResponse);
+                            } else if (status === "CHAT") {
                                 aiMsgDiv.innerHTML = "";
                             }
                             chatBox.scrollTop = chatBox.scrollHeight;
@@ -579,7 +609,7 @@
                         }
 
                         // Token events only apply once status is confirmed SAFE
-                        if (parsed.text && status === "SAFE") {
+                        if (parsed.text && (status === "SAFE" || status === "CHAT")) {
                             fullResponse += parsed.text;
                             aiMsgDiv.innerHTML = formatMarkdown(fullResponse);
                             chatBox.scrollTop = chatBox.scrollHeight;

@@ -42,7 +42,8 @@ DEVANAGARI_RE = re.compile(r"[\u0900-\u097f]")
 IAST_RE = re.compile(r"[āīūṛṝḷṅñṭḍṇśṣṃṁḥ]", re.I)
 TOKEN_RE = re.compile(r"[^\W_]+", re.UNICODE)
 GREETING_RE = re.compile(
-    r"^(?:hi|hello|hey|ok|okay|thanks?|thank you|namaste|नमस्ते)[!. ]*$", re.I
+    r"^(?:hi|hello|hey|ok|okay|thanks?|thank you|namaste|good morning|good evening|"
+    r"how are you|नमस्ते|नमस्कार|हेलो|कैसे हो)[?!. ]*$", re.I
 )
 ROMAN_TO_DEVANAGARI = {
     "ajirna": "अजीर्ण", "amavata": "आमवात", "amlapitta": "अम्लपित्त",
@@ -56,6 +57,7 @@ ROMAN_TO_DEVANAGARI = {
     "vrana": "व्रण",
     # Common BAMS typing variants (ASCII/non-IAST)
     "jwara": "ज्वर", "jwar": "ज्वर", "javara": "ज्वर",
+    "madhumeha": "मधुमेह", "madhumeh": "मधुमेह",
     "shwasa": "श्वास", "shwas": "श्वास", "swasa": "श्वास",
     "kustha": "कुष्ठ", "kushta": "कुष्ठ", "kushtha": "कुष्ठ",
     "atisaar": "अतिसार", "atisara": "अतिसार",
@@ -65,6 +67,7 @@ ROMAN_TO_DEVANAGARI = {
     "sula": "शूल", "shool": "शूल", "shula": "शूल",
 }
 KNOWN_SANSKRIT = set(ROMAN_TO_DEVANAGARI)
+TERM_FALLBACKS = {"मधुमेह": ["प्रमेह"]}
 DETERMINISTIC_OUTPUT = os.getenv("DETERMINISTIC_OUTPUT", "true").lower() in {"1", "true", "yes"}
 POSITIVE_ACTION = re.compile(r"(?:हर|हरी|हृत्|घ्न|नाश|जित्|प्रणुत्|अपह|शमन)")
 DANGER_ACTION = re.compile(r"(?:कर|कृत्|प्रद|वर्धन|कोपन|विदाह|मृत्यु|करोति)")
@@ -295,10 +298,14 @@ def normalize_query(query: str) -> list[str]:
     raw = query.strip()
     if is_sanskrit_query(raw):
         mapped = ROMAN_TO_DEVANAGARI.get(canonical(raw))
-        return [raw, mapped] if mapped and mapped != raw else [raw]
+        terms = [raw]
+        if mapped and mapped != raw:
+            terms.append(mapped)
+        terms.extend(TERM_FALLBACKS.get(mapped or raw, []))
+        return list(dict.fromkeys(terms))
     verified_local = map_english_query(raw)
     if verified_local:
-        return [raw, verified_local]
+        return list(dict.fromkeys([raw, verified_local, *TERM_FALLBACKS.get(verified_local, [])]))
     cache_key = raw.casefold()
     with _cache_lock:
         if cache_key in _normalize_cache:
@@ -385,6 +392,7 @@ def local_explicit_verdict(query: str, candidate: Candidate) -> Verdict | None:
     raw = query.strip()
     mapped = ROMAN_TO_DEVANAGARI.get(canonical(raw)) or map_english_query(raw)
     terms = [term for term in (raw if DEVANAGARI_RE.search(raw) else "", mapped) if term]
+    terms.extend(TERM_FALLBACKS.get(mapped or raw, []))
     if not terms:
         return None
 
@@ -458,7 +466,7 @@ def find_verdict_fast(query: str, candidates: list[Candidate]) -> Verdict:
     """Use strict local evidence first; parallel isolated LLM checks only if needed."""
     selected = candidates[:MAX_CLASSIFY_CANDIDATES]
     if not selected:
-        return Verdict(status="NOT_FOUND", reasoning="No eligible record was retrieved.")
+        return Verdict(status="NOT_FOUND", reasoning="I’m sorry you’re dealing with this. I could not find an eligible classical record for this concern, and I do not want to guess.")
 
     results: dict[str, Verdict] = {}
     unresolved: list[Candidate] = []
@@ -499,7 +507,7 @@ def find_verdict_fast(query: str, candidates: list[Candidate]) -> Verdict:
         return first_danger
     return Verdict(
         status="NOT_FOUND",
-        reasoning=f"No explicit indication was verified in {len(selected)} safety-checked records.",
+        reasoning=f"I’m sorry you’re experiencing this. I could not verify an explicit indication in the {len(selected)} safety-checked records, so I’m withholding a recommendation rather than guessing.",
     )
 
 
@@ -548,8 +556,16 @@ def query_events(query: str) -> Iterator[str]:
         return
 
     if GREETING_RE.fullmatch(query.strip()):
-        reasoning = "Enter a classical Sanskrit disease term; greetings are not clinical queries."
-        yield sse({"status": "NOT_FOUND", "reasoning": reasoning})
+        hindi = bool(DEVANAGARI_RE.search(query))
+        message = (
+            "नमस्ते! मैं आपकी बात ध्यान से सुनने के लिए यहाँ हूँ। आज आप कैसा महसूस कर रहे हैं? "
+            "अपनी परेशानी आराम से बताइए; मैं उपलब्ध शास्त्रीय संदर्भ सावधानी से जाँचूँगा।"
+            if hindi else
+            "Namaste! I’m glad you reached out. How are you feeling today? Please describe "
+            "your concern in your own words, and I’ll carefully check the available classical references."
+        )
+        yield sse({"status": "CHAT", "reasoning": "Friendly non-clinical conversation."})
+        yield sse({"text": message})
         yield done_event()
         return
 
@@ -573,7 +589,7 @@ def query_events(query: str) -> Iterator[str]:
         print(f"[query] failed: {exc}")
         yield sse({
             "status": "NOT_FOUND",
-            "reasoning": "The backend could not complete a verified lookup. Check server logs.",
+            "reasoning": "I’m sorry you’re dealing with this. I could not complete a verified classical lookup right now, so I will not guess or give an unsupported recommendation. Please try again shortly.",
         })
     yield done_event()
 
