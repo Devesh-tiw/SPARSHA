@@ -2,3 +2,8 @@
 __pycache__/
 venv/
 ayurveda_vector_db/
+
+.env
+venv/
+__pycache__/
+ayurveda_vector_db/
